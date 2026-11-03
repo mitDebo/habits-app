@@ -37,9 +37,9 @@ function SampleRow({ name, shows, onTap }: { name: string; shows: string; onTap?
     </div>
   )
   return (
-    <div className="flex w-full items-stretch bg-row-1 select-none" aria-label={`${name || 'Your goal'} in the grid`}>
+    <div className="flex w-full items-stretch bg-row-1 select-none" aria-label={`${name || 'Your habit'} in the grid`}>
       <div className="flex min-w-0 flex-1 items-center px-2 text-sm leading-tight font-medium [overflow-wrap:anywhere]">
-        {name.trim() || <span className="text-muted-foreground italic">Your goal</span>}
+        {name.trim() || <span className="text-muted-foreground italic">Your habit</span>}
       </div>
       {onTap ? (
         <button
@@ -74,13 +74,31 @@ export function TogglePreview({ name, mark }: { name: string; mark: ToggleMark }
   )
 }
 
+// The number widgets aren't all the same height (the dial is the tallest), so the Input Preview always makes
+// room for a dial with its min/max labels: an invisible one sits underneath the real widget. That way
+// switching Box/Dial/Slider, or filling in a min or max, never changes the box's height.
+function DialSizedSpace({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid w-full place-items-center">
+      <div aria-hidden="true" inert className="invisible col-start-1 row-start-1 w-full">
+        <NumberDial id="preview-space" value={0} onChange={() => {}} settings={{ step: 1, min: 0, max: 10 }} compact />
+      </div>
+      <div className="col-start-1 row-start-1 w-full">{children}</div>
+    </div>
+  )
+}
+
 // Number: the real widget, using the settings so far (null while they don't make sense yet). It starts
 // where a new day would; the parent restarts it when the bounds, step or style change.
 export function NumberPreview({ name, settings }: { name: string; settings: NumberSettings | null }) {
   if (!settings)
     return (
       <Preview
-        input={<p className="text-center text-sm text-muted-foreground">Fix the settings to see a preview.</p>}
+        input={
+          <DialSizedSpace>
+            <p className="text-center text-sm text-muted-foreground">Fix the settings to see a preview.</p>
+          </DialSizedSpace>
+        }
         grid={<SampleRow name={name} shows="" />}
       />
     )
@@ -95,30 +113,39 @@ function NumberPreviewWidget({ name, settings }: { name: string; settings: Numbe
   return (
     <Preview
       input={
-        settings.show === 'dial' ? (
-          <NumberDial
-            id="preview-value"
-            value={value}
-            onChange={(v) => setText(String(v))}
-            settings={settings}
-            compact
-          />
-        ) : settings.show === 'slider' && min !== undefined && max !== undefined ? (
-          <div className="w-full">
-            <NumberSlider
+        <DialSizedSpace>
+          {settings.show === 'dial' ? (
+            <NumberDial
               id="preview-value"
               value={value}
               onChange={(v) => setText(String(v))}
-              settings={{ ...settings, min, max }}
+              settings={settings}
+              compact
             />
-          </div>
-        ) : (
-          <NumberEntry id="preview-value" text={text} onChange={setText} settings={settings} />
-        )
+          ) : settings.show === 'slider' && min !== undefined && max !== undefined ? (
+            <div className="w-full">
+              <NumberSlider
+                id="preview-value"
+                value={value}
+                onChange={(v) => setText(String(v))}
+                settings={{ ...settings, min, max }}
+              />
+            </div>
+          ) : (
+            <NumberEntry id="preview-value" text={text} onChange={setText} settings={settings} />
+          )}
+        </DialSizedSpace>
       }
       grid={<SampleRow name={name} shows={ok ? shortNumber(value) : '?'} />}
     />
   )
+}
+
+// The choice pickers come in different heights (and the buttons get taller with every option), so the Input
+// Preview gives them one fixed-height space: switching Buttons/Dropdown/Wheel or adding options never
+// changes the box's height. It's about two and a half buttons tall, so a cut-off button hints you can scroll.
+function ChoiceSpace({ children }: { children: ReactNode }) {
+  return <div className="flex h-32 w-full flex-col justify-center">{children}</div>
 }
 
 // Choice: the real picker with the options so far (those with an emoji).
@@ -134,7 +161,11 @@ export function ChoicePreview({
   if (options.length === 0)
     return (
       <Preview
-        input={<p className="text-center text-sm text-muted-foreground">Give an option an emoji to see a preview.</p>}
+        input={
+          <ChoiceSpace>
+            <p className="text-center text-sm text-muted-foreground">Give an option an emoji to see a preview.</p>
+          </ChoiceSpace>
+        }
         grid={<SampleRow name={name} shows="" />}
       />
     )
@@ -162,15 +193,18 @@ function ChoicePreviewWidget({
   return (
     <Preview
       input={
-        <div className="w-full">
+        <ChoiceSpace>
           {show === 'dropdown' ? (
             <ChoiceDropdown {...picker} />
           ) : show === 'wheel' ? (
             <ChoiceWheel {...picker} rows={3} />
           ) : (
-            <ChoiceButtons {...picker} />
+            // However many options there are, the buttons scroll inside the space instead of stretching it.
+            <div className="max-h-full overflow-y-auto p-0.5">
+              <ChoiceButtons {...picker} />
+            </div>
           )}
-        </div>
+        </ChoiceSpace>
       }
       grid={<SampleRow name={name} shows={chosen} />}
     />

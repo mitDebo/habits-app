@@ -3,18 +3,10 @@ import { AuthProvider } from '@/auth/AuthProvider'
 import { useAuth } from '@/auth/context'
 import { Header } from '@/components/Header'
 import { AuthCallbackPage } from '@/pages/AuthCallbackPage'
-import { CurrentRunsPage } from '@/pages/CurrentRunsPage'
-import { EditGoalPage } from '@/pages/EditGoalPage'
-import { EditPlanPage } from '@/pages/EditPlanPage'
 import { GoalsPage } from '@/pages/GoalsPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoggedOutPage } from '@/pages/LoggedOutPage'
-import { NewGoalPage } from '@/pages/NewGoalPage'
-import { NewPlanPage } from '@/pages/NewPlanPage'
-import { PastRunsPage } from '@/pages/PastRunsPage'
-import { PlansPage } from '@/pages/PlansPage'
 import { SettingsPage } from '@/pages/SettingsPage'
-import { StartRunPage } from '@/pages/StartRunPage'
 
 // Signed in: the app. Signed out: the placeholder front page, whatever the address.
 function Guarded() {
@@ -23,15 +15,7 @@ function Guarded() {
   if (!session) return <LoggedOutPage />
   return (
     <Routes>
-      <Route path="/runs" element={<CurrentRunsPage session={session} />} />
-      <Route path="/runs/past" element={<PastRunsPage session={session} />} />
-      <Route path="/goals" element={<GoalsPage session={session} />} />
-      <Route path="/goals/new" element={<NewGoalPage session={session} />} />
-      <Route path="/goals/:id/edit" element={<EditGoalPage session={session} />} />
-      <Route path="/plans" element={<PlansPage session={session} />} />
-      <Route path="/plans/new" element={<NewPlanPage session={session} />} />
-      <Route path="/plans/:id/edit" element={<EditPlanPage session={session} />} />
-      <Route path="/plans/:id/start" element={<StartRunPage session={session} />} />
+      <Route path="/habits" element={<GoalsPage />} />
       <Route path="/settings" element={<SettingsPage session={session} />} />
       <Route path="*" element={<HomePage session={session} />} />
     </Routes>

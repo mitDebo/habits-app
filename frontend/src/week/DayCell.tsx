@@ -32,9 +32,9 @@ type Props = {
 // edit mode: that's for setting up the plan, so there what's recorded shows but can't be changed).
 // In edit mode it can be taken off the plan (or put back):
 // - a normal day: swipe it left to slide out a red trash button
-// - a removed (blank) day: swipe it right to slide out a green + button (the mirror image)
+// - a removed (lined) day: swipe it right to slide out a green + button (the mirror image)
 // - on computers with a mouse, hovering shows a tiny × (or +) in the corner that does it in one click
-// A removed day is blank and can't be ticked.
+// A removed day is lined (like days outside the plan) and can't be ticked.
 export function DayCell(props: Props) {
   const { label, editing, shows, future, removed, widthPx, surface, className, style, revealed, onReveal } = props
   const cell = useRef<HTMLTableCellElement>(null)
@@ -133,8 +133,8 @@ export function DayCell(props: Props) {
         style={{ transform: `translateX(${offset}px)`, background: swiping || revealed ? surface : undefined }}
       >
         {removed ? (
-          // Off the plan: blank, nothing to tick.
-          <div aria-label={`${label}: not part of the plan`} role="img" className="h-11 bg-background" />
+          // Off the plan: nothing to tick. See-through, so the cell's faint diagonal lines show.
+          <div aria-label={`${label}: not part of the plan`} role="img" className="h-11" />
         ) : editing ? (
           // Edit mode: what's recorded shows but can't be changed. Days after today stay greyed out.
           <div

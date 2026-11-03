@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { authCallbackUrl } from '@/auth/context'
+import { devSignInAvailable, startDevSession } from '@/auth/devSession'
 import { supabase } from '@/auth/supabase'
 
 // Corners for the box's buttons and email field: a little rounded, less than the app's default.
@@ -119,6 +120,21 @@ function LoginForm({ onClose }: { onClose: () => void }) {
         <p role="alert" className="text-destructive">
           {error}
         </p>
+      )}
+
+      {/* Only when running on your own computer with `npm run dev` (never on the live site): skip signing in
+          and use a pretend account, for trying the mockup from a phone. */}
+      {devSignInAvailable && (
+        <Button
+          variant="ghost"
+          className={`${corners} border border-dashed text-muted-foreground`}
+          onClick={() => {
+            startDevSession()
+            onClose()
+          }}
+        >
+          Skip sign-in (dev)
+        </Button>
       )}
     </div>
   )

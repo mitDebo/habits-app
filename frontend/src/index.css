@@ -5,6 +5,22 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Gentle side-to-side nudges for the arrows that point new users at the next step (bounce-style, but
+   sideways): one pointing left, one pointing right. */
+@theme {
+    --animate-nudge-left: nudge-left 1s ease-in-out infinite;
+    --animate-nudge-right: nudge-right 1s ease-in-out infinite;
+
+    @keyframes nudge-left {
+        0%, 100% { transform: translateX(0); }
+        50% { transform: translateX(-5px); }
+    }
+    @keyframes nudge-right {
+        0%, 100% { transform: translateX(0); }
+        50% { transform: translateX(5px); }
+    }
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;

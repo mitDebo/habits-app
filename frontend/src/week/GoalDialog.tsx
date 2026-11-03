@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { firstEmoji } from '@/week/emoji'
 import { ChoicePreview, NumberPreview, TogglePreview } from '@/week/GoalPreview'
@@ -22,15 +22,18 @@ export type GoalChoice = { id: number; name: string }
 type Props = {
   open: boolean
   onClose: () => void
-  // The user's goals that aren't in this plan yet.
-  available: GoalChoice[]
-  onAddExisting: (ids: number[]) => void
+  // The user's goals that aren't in this plan yet. Leave both out (like on the Goals page) for a box that
+  // only makes new goals: no Existing tab.
+  available?: GoalChoice[]
+  onAddExisting?: (ids: number[]) => void
   onCreate: (goal: NewGoal) => void
+  // Your very first goal: the box walks you through it (see GoalPicker).
+  firstGoal?: boolean
 }
 
 // A box that pops up over the page (which goes dark behind it) for adding goals to the plan. Close it
 // with Cancel, Esc, or by clicking the dark area. Like the login box, it uses the browser's own <dialog>.
-export function GoalDialog({ open, onClose, available, onAddExisting, onCreate }: Props) {
+export function GoalDialog({ open, onClose, available, onAddExisting, onCreate, firstGoal }: Props) {
   const dialog = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -49,15 +52,25 @@ export function GoalDialog({ open, onClose, available, onAddExisting, onCreate }
       className="m-auto w-[calc(100%-1.5rem)] max-w-md overflow-hidden rounded-xl sm:max-w-2xl border bg-popover p-0 text-popover-foreground shadow-xl backdrop:bg-black/60"
     >
       {/* Only drawn while open, so it starts fresh each time. */}
-      {open && <GoalPicker available={available} onClose={onClose} onAddExisting={onAddExisting} onCreate={onCreate} />}
+      {open && (
+        <GoalPicker
+          available={available}
+          onClose={onClose}
+          onAddExisting={onAddExisting}
+          onCreate={onCreate}
+          firstGoal={firstGoal}
+        />
+      )}
     </dialog>
   )
 }
 
 type Tab = 'existing' | 'toggle' | 'number' | 'choice'
+// Plus, for your first goal, a welcome page shown before any tab is picked.
+type Page = Tab | 'welcome'
 // The tabs, in two groups with a small heading each: "Existing" (Goals) and "New" (Toggle, Number, Choice).
 const tabs: { id: Tab; label: string; group: string }[] = [
-  { id: 'existing', label: 'Goals', group: 'Existing' },
+  { id: 'existing', label: 'Habits', group: 'Existing' },
   { id: 'toggle', label: 'Toggle', group: 'New' },
   { id: 'number', label: 'Number', group: 'New' },
   { id: 'choice', label: 'Choice', group: 'New' },
@@ -70,12 +83,19 @@ const tabs: { id: Tab; label: string; group: string }[] = [
 //   and step.
 // - New choice: pick one of your own options each day; each option is an emoji, with an optional name.
 // The New tabs create the goal (it joins your goals) and add it to the plan.
-function GoalPicker({ available, onClose, onAddExisting, onCreate }: Omit<Props, 'open'>) {
-  // Start on "Your goals", unless there's nothing left there to add.
-  const [tab, setTab] = useState<Tab>(available.length > 0 ? 'existing' : 'toggle')
+//
+// Your first goal (`firstGoal`) is walked through, one nudge at a time: a welcome page with an arrow at the
+// Toggle tab; then, on the Toggle tab, a nudge to type a name; then one at the New button to save it.
+function GoalPicker({ available, onClose, onAddExisting, onCreate, firstGoal = false }: Omit<Props, 'open'>) {
+  // Start on "Your goals", unless there's nothing left there to add (or on the welcome page, the first time).
+  const [tab, setTab] = useState<Page>(
+    firstGoal ? 'welcome' : available && available.length > 0 ? 'existing' : 'toggle',
+  )
+  // Without `available`, only the New tabs.
+  const shownTabs = available ? tabs : tabs.filter((t) => t.group === 'New')
 
   // When a page is shown (and when the box opens), put the cursor in its first box.
-  const pages = useRef<Partial<Record<Tab, HTMLDivElement | null>>>({})
+  const pages = useRef<Partial<Record<Page, HTMLDivElement | null>>>({})
   // (Waits a frame, so the box has finished opening first; opening it would otherwise put the cursor on
   // the first tab.)
   useEffect(() => {
@@ -87,7 +107,7 @@ function GoalPicker({ available, onClose, onAddExisting, onCreate }: Omit<Props,
     <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
       {/* The banner across the top. */}
       <h2 id="goal-dialog-title" className="border-b bg-header px-5 py-3 text-xl font-semibold">
-        Add a goal
+        Add a habit
       </h2>
       <div className="flex min-h-0 flex-1">
         {/* Tabs down the left edge, like an address book's: a shaded column of bordered tabs, flush with
@@ -96,12 +116,12 @@ function GoalPicker({ available, onClose, onAddExisting, onCreate }: Omit<Props,
         <div
           role="tablist"
           aria-orientation="vertical"
-          aria-label="Kind of goal"
+          aria-label="Kind of habit"
           className="flex w-28 shrink-0 flex-col border-r bg-muted"
         >
-          {tabs.map((t, index) => [
+          {shownTabs.map((t, index) => [
             // A small heading above the first tab of each group.
-            t.group !== tabs[index - 1]?.group && (
+            t.group !== shownTabs[index - 1]?.group && (
               <p
                 key={`heading-${t.group}`}
                 role="presentation"
@@ -118,9 +138,13 @@ function GoalPicker({ available, onClose, onAddExisting, onCreate }: Omit<Props,
               aria-selected={tab === t.id}
               aria-controls={`goal-page-${t.id}`}
               onClick={() => setTab(t.id)}
-              className={`-mr-px border-b px-3 py-3 text-left text-sm ${tab === t.id ? 'relative z-10 border-r border-r-popover bg-popover font-semibold text-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'}`}
+              className={`-mr-px flex items-center justify-between border-b px-3 py-3 text-left text-sm ${tab === t.id ? 'relative z-10 border-r border-r-popover bg-popover font-semibold text-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'} ${tab === 'welcome' && t.id === 'toggle' ? 'font-semibold text-foreground ring-2 ring-primary ring-inset' : ''}`}
             >
               {t.label}
+              {/* On the welcome page: an arrow nudging you to pick Toggle. */}
+              {tab === 'welcome' && t.id === 'toggle' && (
+                <ArrowLeft aria-hidden="true" className="size-4 animate-nudge-left motion-reduce:animate-none" />
+              )}
             </button>,
           ])}
         </div>
@@ -128,7 +152,18 @@ function GoalPicker({ available, onClose, onAddExisting, onCreate }: Omit<Props,
             makes the box as tall as the tallest page, whichever it is, so switching tabs never changes its
             size (and each page keeps what you've typed while the box is open). */}
         <div className="grid min-w-0 flex-1 overflow-y-auto">
-          {tabs.map((t) => (
+          {firstGoal && (
+            <div
+              ref={(el) => {
+                pages.current.welcome = el
+              }}
+              aria-hidden={tab !== 'welcome'}
+              className={`col-start-1 row-start-1 flex flex-col gap-3 p-4 ${tab === 'welcome' ? 'visible' : 'invisible'}`}
+            >
+              <Welcome onClose={onClose} />
+            </div>
+          )}
+          {shownTabs.map((t) => (
             <div
               key={t.id}
               ref={(el) => {
@@ -140,8 +175,10 @@ function GoalPicker({ available, onClose, onAddExisting, onCreate }: Omit<Props,
               aria-hidden={tab !== t.id}
               className={`col-start-1 row-start-1 flex flex-col p-4 ${tab === t.id ? 'visible' : 'invisible'}`}
             >
-              {t.id === 'existing' && <ExistingGoals available={available} onClose={onClose} onAdd={onAddExisting} />}
-              {t.id === 'toggle' && <NewToggle onClose={onClose} onCreate={onCreate} />}
+              {t.id === 'existing' && available && onAddExisting && (
+                <ExistingGoals available={available} onClose={onClose} onAdd={onAddExisting} />
+              )}
+              {t.id === 'toggle' && <NewToggle onClose={onClose} onCreate={onCreate} guide={firstGoal} />}
               {t.id === 'number' && <NewNumber onClose={onClose} onCreate={onCreate} />}
               {t.id === 'choice' && <NewChoice onClose={onClose} onCreate={onCreate} />}
             </div>
@@ -149,6 +186,36 @@ function GoalPicker({ available, onClose, onAddExisting, onCreate }: Omit<Props,
         </div>
       </div>
     </div>
+  )
+}
+
+// The first page of your first goal: what the kinds are, pointing you at Toggle to start.
+function Welcome({ onClose }: { onClose: () => void }) {
+  return (
+    <>
+      <p className="text-lg font-semibold">Let's make your first habit.</p>
+      <p className="text-sm text-muted-foreground">There are three kinds, down the left:</p>
+      <ul className="flex flex-col gap-2 text-sm">
+        <li>
+          <span className="font-semibold">Toggle</span>: done or not, like "Read" or "No sugar".
+        </li>
+        <li>
+          <span className="font-semibold">Number</span>: an amount or a score, like pages read or mood from 1 to 10.
+        </li>
+        <li>
+          <span className="font-semibold">Choice</span>: pick one of your own emoji each day.
+        </li>
+      </ul>
+      <p className="flex items-center gap-2 text-sm font-medium">
+        <ArrowLeft aria-hidden="true" className="size-4 shrink-0 animate-nudge-left motion-reduce:animate-none" />
+        Toggle is the simplest. Pick it to start.
+      </p>
+      <div className="mt-auto flex justify-end">
+        <Button type="button" variant="outline" className={corners} onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </>
   )
 }
 
@@ -175,11 +242,11 @@ function ExistingGoals({
     <form onSubmit={add} className="flex flex-1 flex-col">
       <WithPreview buttons={<Buttons onClose={onClose} label="Add" disabled={!picked} />}>
         {available.length === 0 ? (
-          <p className="text-sm text-muted-foreground">All your goals are already in this plan.</p>
+          <p className="text-sm text-muted-foreground">All your habits are already in this plan.</p>
         ) : (
           <div className="flex flex-col gap-1">
             <label htmlFor="existing-goal" className="text-sm font-medium">
-              Goal
+              Habit
             </label>
             {/* White in both light and dark mode, like the name boxes on the New tabs. */}
             <select
@@ -189,7 +256,7 @@ function ExistingGoals({
               className={field}
             >
               <option value="" disabled>
-                Choose a goal…
+                Choose a habit…
               </option>
               {available.map((goal) => (
                 <option key={goal.id} value={goal.id}>
@@ -204,24 +271,43 @@ function ExistingGoals({
   )
 }
 
-// A New tab's page: the settings, with the live preview and the Cancel/New buttons. On a phone the preview is
-// pinned at the top of the page, the settings scroll underneath it, and the buttons come last; on a computer
-// (where the box is wider) the preview sits beside the settings, with the buttons at the bottom of it.
-// The Goals tab has no preview: on a computer its pane is left empty (so every tab looks alike), and on a phone
-// there's no pane at all.
-function WithPreview({ preview, buttons, children }: { preview?: ReactNode; buttons: ReactNode; children: ReactNode }) {
+// A New tab's page: the name, the "show as" choices and live preview, the rest of the settings, and the Cancel/New buttons.
+// - On a phone they're stacked in that order: name, preview, settings, then the buttons at the bottom of the
+//   box. The preview pins itself to the top of the page once you scroll past it, so it stays in view while
+//   you change the settings below it.
+// - On a computer (where the box is wider) the name and settings make the left column, and the preview is a
+//   pane down the box's right edge, from the banner to the bottom, with the buttons at its bottom.
+// The Goals tab has no name or preview: on a computer its pane is left empty (so every tab looks alike), and
+// on a phone there's no pane at all.
+function WithPreview({
+  name,
+  showAs,
+  preview,
+  buttons,
+  children,
+}: {
+  name?: ReactNode
+  showAs?: ReactNode
+  preview?: ReactNode
+  buttons: ReactNode
+  children?: ReactNode
+}) {
   return (
-    <div className="flex flex-1 flex-col gap-3 sm:flex-row-reverse sm:gap-5">
-      {/* On a computer the pane runs down the box's right edge, from the banner to the bottom, with a
-          line on its left. */}
+    <div className="flex flex-1 flex-col gap-3 sm:grid sm:grid-cols-[1fr_15rem] sm:grid-rows-[auto_1fr] sm:gap-x-5">
+      {name && <div className="sm:col-start-1 sm:row-start-1">{name}</div>}
       <div
-        className={`${preview ? '' : 'hidden'} sticky top-0 z-10 -mx-4 -mt-4 border-b bg-pane px-4 pt-3 pb-3 sm:static sm:-my-4 sm:mr-[-1rem] sm:ml-0 sm:flex sm:w-64 sm:shrink-0 sm:flex-col sm:gap-3 sm:border-b-0 sm:border-l sm:p-3`}
+        className={`${preview ? '' : 'hidden'} sticky top-0 z-10 -mx-4 border-y bg-pane px-4 py-3 sm:static sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:-my-4 sm:mr-[-1rem] sm:ml-0 sm:flex sm:flex-col sm:gap-3 sm:border-y-0 sm:border-l sm:p-3`}
       >
+        {/* The "show as" choices sit on top of the preview they change (no heading: being right above it
+            says what they're for). */}
+        {showAs && <div className="mb-3 sm:mb-0">{showAs}</div>}
         {preview}
         {/* The buttons, pushed to the bottom of the pane (computer only). */}
         <div className="mt-auto hidden sm:block">{buttons}</div>
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <div
+        className={`flex min-w-0 flex-1 flex-col gap-3 sm:col-start-1 ${name ? 'sm:row-start-2' : 'sm:row-span-2 sm:row-start-1'}`}
+      >
         {children}
         {/* The buttons, at the bottom of the box under the settings (phone only). */}
         <div className="mt-auto sm:hidden">{buttons}</div>
@@ -236,11 +322,14 @@ function NameField({
   value,
   onChange,
   error,
+  hint,
 }: {
   id: string
   value: string
   onChange: (name: string) => void
   error?: string
+  // A nudge under the box (for your first goal), shown until something's typed.
+  hint?: string
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -267,8 +356,18 @@ function NameField({
           {error}
         </p>
       )}
-      {/* A short bar under the name, setting it apart from the goal's other settings. */}
-      <hr aria-hidden="true" className="mx-auto mt-3 w-[90%] rounded-full border-t-2 border-foreground/20" />
+      {hint && !value.trim() && !error && (
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          <ArrowUp aria-hidden="true" className="size-4 shrink-0 animate-bounce motion-reduce:animate-none" />
+          {hint}
+        </p>
+      )}
+      {/* A bar under the name, setting it apart from the goal's other settings. (Computer only: on a phone the
+          preview sits between them instead.) */}
+      <hr
+        aria-hidden="true"
+        className="mx-auto mt-3 hidden w-[90%] rounded-full border-t-2 border-foreground/20 sm:block"
+      />
     </div>
   )
 }
@@ -305,20 +404,47 @@ function SmallField({
 }
 
 // Cancel and the main button, at the bottom of every page.
-function Buttons({ onClose, label, disabled }: { onClose: () => void; label: string; disabled?: boolean }) {
+// `nudge`: an arrow pointing at the main button, for the last step of your first goal.
+function Buttons({
+  onClose,
+  label,
+  disabled,
+  nudge,
+}: {
+  onClose: () => void
+  label: string
+  disabled?: boolean
+  nudge?: boolean
+}) {
   return (
-    <div className="flex justify-end gap-2">
+    <div className="flex items-center justify-end gap-2">
       <Button type="button" variant="outline" className={corners} onClick={onClose}>
         Cancel
       </Button>
-      <Button type="submit" className={corners} disabled={disabled}>
+      {nudge && (
+        <ArrowRight aria-hidden="true" className="size-5 shrink-0 animate-nudge-right motion-reduce:animate-none" />
+      )}
+      <Button
+        type="submit"
+        className={`${corners} ${nudge ? 'ring-2 ring-primary ring-offset-2 ring-offset-popover' : ''}`}
+        disabled={disabled}
+      >
         {label}
       </Button>
     </div>
   )
 }
 
-function NewToggle({ onClose, onCreate }: { onClose: () => void; onCreate: (goal: NewGoal) => void }) {
+// `guide`: your first goal, so it nudges you to name it and then to save it.
+function NewToggle({
+  onClose,
+  onCreate,
+  guide = false,
+}: {
+  onClose: () => void
+  onCreate: (goal: NewGoal) => void
+  guide?: boolean
+}) {
   const [name, setName] = useState('')
   const [mark, setMark] = useState<ToggleMark>('✓')
   const [error, setError] = useState<string>()
@@ -326,7 +452,7 @@ function NewToggle({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const trimmed = name.trim()
-    if (!trimmed) return setError('Give the goal a name.')
+    if (!trimmed) return setError('Give the habit a name.')
     onCreate({ name: trimmed, kind: 'toggle', mark })
     onClose()
   }
@@ -335,48 +461,51 @@ function NewToggle({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
     <form onSubmit={submit} noValidate className="flex flex-1 flex-col">
       <WithPreview
         preview={<TogglePreview name={name} mark={mark} />}
-        buttons={<Buttons onClose={onClose} label="New" />}
-      >
-        <NameField
-          id="goal-name"
-          value={name}
-          onChange={(value) => {
-            setName(value)
-            setError(undefined)
-          }}
-          error={error}
-        />
-        {/* "Show as": the mark a done day gets in the grid. */}
-        <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 text-sm font-medium">Show as</legend>
-          <div className="flex gap-2">
-            {(
-              [
-                ['✓', 'Check'],
-                ['✗', 'Cross'],
-              ] as const
-            ).map(([value, label]) => (
-              <label
-                key={value}
-                className={`${corners} flex flex-1 cursor-pointer items-center justify-center gap-2 border px-2 py-1.5 text-sm select-none ${mark === value ? 'border-primary bg-accent font-semibold' : 'hover:bg-accent/60'}`}
-              >
-                <input
-                  type="radio"
-                  name="toggle-mark"
-                  value={value}
-                  checked={mark === value}
-                  onChange={() => setMark(value)}
-                  className="sr-only"
-                />
-                <span className="text-lg font-bold" aria-hidden="true">
-                  {value}
-                </span>
-                {label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      </WithPreview>
+        buttons={<Buttons onClose={onClose} label="New" nudge={guide && name.trim() !== ''} />}
+        name={
+          <NameField
+            id="goal-name"
+            value={name}
+            onChange={(value) => {
+              setName(value)
+              setError(undefined)
+            }}
+            error={error}
+            hint={guide ? 'Give it a name, like "Read".' : undefined}
+          />
+        }
+        // "Show as": the mark a done day gets in the grid.
+        showAs={
+          <fieldset aria-label="Show as" className="flex flex-col gap-1">
+            <div className="flex gap-2">
+              {(
+                [
+                  ['✓', 'Check'],
+                  ['✗', 'Cross'],
+                ] as const
+              ).map(([value, label]) => (
+                <label
+                  key={value}
+                  className={`${corners} flex flex-1 cursor-pointer items-center justify-center gap-2 border px-2 py-1.5 text-sm select-none ${mark === value ? 'border-primary bg-accent font-semibold' : 'hover:bg-accent/60'}`}
+                >
+                  <input
+                    type="radio"
+                    name="toggle-mark"
+                    value={value}
+                    checked={mark === value}
+                    onChange={() => setMark(value)}
+                    className="sr-only"
+                  />
+                  <span className="text-lg font-bold" aria-hidden="true">
+                    {value}
+                  </span>
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        }
+      ></WithPreview>
     </form>
   )
 }
@@ -428,7 +557,7 @@ function NewNumber({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
     const found: Record<string, string> = {}
     const lo = parse(min)
     const hi = parse(max)
-    if (!name.trim()) found.name = 'Give the goal a name.'
+    if (!name.trim()) found.name = 'Give the habit a name.'
     if (lo !== undefined && Number.isNaN(lo)) found.min = 'Not a number.'
     if (hi !== undefined && Number.isNaN(hi)) found.max = 'Not a number.'
     if (lo !== undefined && hi !== undefined && !found.min && !found.max && lo >= hi)
@@ -464,8 +593,53 @@ function NewNumber({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
             settings={previewSettings}
           />
         }
+        name={<NameField id="number-name" value={name} onChange={setName} error={errors.name} />}
+        // "Show as": how it's recorded. The slider needs both a min and a max.
+        showAs={
+          <fieldset aria-label="Show as" className="flex flex-col gap-1">
+            <div className="flex gap-2">
+              {(
+                [
+                  ['entry', 'Box'],
+                  ['dial', 'Dial'],
+                  ['slider', 'Slider'],
+                ] as const
+              ).map(([value, label]) => {
+                const unavailable = value === 'slider' && !bounded
+                return (
+                  <label
+                    key={value}
+                    className={`${corners} flex flex-1 flex-col items-center justify-center border px-2 py-1.5 text-center text-sm select-none ${unavailable ? 'group relative cursor-not-allowed' : 'cursor-pointer'} ${show === value ? 'border-primary bg-accent font-semibold' : unavailable ? '' : 'hover:bg-accent/60'}`}
+                  >
+                    <input
+                      type="radio"
+                      name="number-show"
+                      value={value}
+                      checked={show === value}
+                      disabled={unavailable}
+                      aria-describedby={unavailable ? 'number-slider-why' : undefined}
+                      onChange={() => setShow(value)}
+                      className="sr-only"
+                    />
+                    <span className={unavailable ? 'opacity-40' : ''}>{label}</span>
+                    {/* Greyed out, with a little bubble explaining why when you point at it (or tap it on a
+                        phone). It opens below the button, lined up with its right edge so it stays in the box. */}
+                    {unavailable && (
+                      <span
+                        id="number-slider-why"
+                        role="tooltip"
+                        className="pointer-events-none absolute top-full right-0 z-20 mt-1 hidden w-44 rounded-md bg-foreground px-2 py-1.5 text-left text-xs font-normal text-background shadow-md group-hover:block"
+                      >
+                        A slider needs both a min and a max, so it knows where its ends are.
+                      </span>
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+          </fieldset>
+        }
       >
-        <NameField id="number-name" value={name} onChange={setName} error={errors.name} />
         <SmallField id="number-unit" label="Unit (optional)">
           {(props) => (
             <input
@@ -495,32 +669,36 @@ function NewNumber({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
             )}
           </SmallField>
         </div>
-        {bounded && (
-          <div className="flex gap-2">
-            <SmallField id="number-min-label" label="Min means">
-              {(props) => (
-                <input
-                  {...props}
-                  placeholder="Awful"
-                  maxLength={MAX_SHORT_TEXT}
-                  value={minLabel}
-                  onChange={(e) => setMinLabel(e.target.value)}
-                />
-              )}
-            </SmallField>
-            <SmallField id="number-max-label" label="Max means">
-              {(props) => (
-                <input
-                  {...props}
-                  placeholder="Great"
-                  maxLength={MAX_SHORT_TEXT}
-                  value={maxLabel}
-                  onChange={(e) => setMaxLabel(e.target.value)}
-                />
-              )}
-            </SmallField>
-          </div>
-        )}
+        {/* What the two ends mean. Only useful with both a min and a max, so until then it's greyed out (but
+            still there, so filling in the max doesn't make the box grow). */}
+        <fieldset
+          disabled={!bounded}
+          title={bounded ? undefined : 'Fill in both a min and a max first.'}
+          className={`flex gap-2 ${bounded ? '' : 'cursor-not-allowed opacity-50'}`}
+        >
+          <SmallField id="number-min-label" label="Min means">
+            {(props) => (
+              <input
+                {...props}
+                placeholder="Awful"
+                maxLength={MAX_SHORT_TEXT}
+                value={minLabel}
+                onChange={(e) => setMinLabel(e.target.value)}
+              />
+            )}
+          </SmallField>
+          <SmallField id="number-max-label" label="Max means">
+            {(props) => (
+              <input
+                {...props}
+                placeholder="Great"
+                maxLength={MAX_SHORT_TEXT}
+                value={maxLabel}
+                onChange={(e) => setMaxLabel(e.target.value)}
+              />
+            )}
+          </SmallField>
+        </fieldset>
         <SmallField id="number-step" label="Record in">
           {(props) => (
             <select {...props} value={step} onChange={(e) => setStep(Number(e.target.value) as NumberSettings['step'])}>
@@ -530,39 +708,6 @@ function NewNumber({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
             </select>
           )}
         </SmallField>
-        {/* "Show as": how it's recorded. The slider needs both a min and a max. */}
-        <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 text-sm font-medium">Show as</legend>
-          <div className="flex gap-2">
-            {(
-              [
-                ['entry', 'Number box'],
-                ['dial', 'Dial'],
-                ['slider', 'Slider'],
-              ] as const
-            ).map(([value, label]) => {
-              const unavailable = value === 'slider' && !bounded
-              return (
-                <label
-                  key={value}
-                  className={`${corners} flex flex-1 flex-col items-center justify-center border px-2 py-1.5 text-center text-sm select-none ${unavailable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${show === value ? 'border-primary bg-accent font-semibold' : unavailable ? '' : 'hover:bg-accent/60'}`}
-                >
-                  <input
-                    type="radio"
-                    name="number-show"
-                    value={value}
-                    checked={show === value}
-                    disabled={unavailable}
-                    onChange={() => setShow(value)}
-                    className="sr-only"
-                  />
-                  {label}
-                  {unavailable && <span className="text-[11px] font-normal">needs a min and max</span>}
-                </label>
-              )
-            })}
-          </div>
-        </fieldset>
       </WithPreview>
     </form>
   )
@@ -610,7 +755,7 @@ function NewChoice({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
     // Options left completely empty are ignored.
     const filled = options.filter((o) => o.emoji || o.name.trim())
     const emojis = filled.map((o) => o.emoji)
-    if (!name.trim()) found.name = 'Give the goal a name.'
+    if (!name.trim()) found.name = 'Give the habit a name.'
     if (filled.length < 2) found.options = 'Give it at least two options.'
     else if (filled.some((o) => !o.emoji)) found.options = 'Pick an emoji for every option.'
     else if (new Set(emojis).size !== emojis.length) found.options = 'Each option needs a different emoji.'
@@ -636,16 +781,47 @@ function NewChoice({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
             show={show}
           />
         }
+        name={
+          <NameField
+            id="choice-name"
+            value={name}
+            onChange={(value) => {
+              setName(value)
+              setErrors({})
+            }}
+            error={errors.name}
+          />
+        }
+        // "Show as": how a day is recorded.
+        showAs={
+          <fieldset aria-label="Show as" className="flex flex-col gap-1">
+            <div className="flex gap-2">
+              {(
+                [
+                  ['buttons', 'Buttons'],
+                  ['dropdown', 'Dropdown'],
+                  ['wheel', 'Wheel'],
+                ] as const
+              ).map(([value, label]) => (
+                <label
+                  key={value}
+                  className={`${corners} flex flex-1 cursor-pointer items-center justify-center border px-1 py-1.5 text-sm select-none ${show === value ? 'border-primary bg-accent font-semibold' : 'hover:bg-accent/60'}`}
+                >
+                  <input
+                    type="radio"
+                    name="choice-show"
+                    value={value}
+                    checked={show === value}
+                    onChange={() => setShow(value)}
+                    className="sr-only"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        }
       >
-        <NameField
-          id="choice-name"
-          value={name}
-          onChange={(value) => {
-            setName(value)
-            setErrors({})
-          }}
-          error={errors.name}
-        />
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-sm font-medium">Options</legend>
           {/* The options scroll inside their own box (about four rows tall), so adding more doesn't make the
@@ -714,34 +890,6 @@ function NewChoice({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
             <Plus aria-hidden="true" className="size-5" />
           </button>
           {errors.options && <p className="text-sm text-destructive">{errors.options}</p>}
-        </fieldset>
-        {/* "Show as": how a day is recorded. */}
-        <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 text-sm font-medium">Show as</legend>
-          <div className="flex gap-2">
-            {(
-              [
-                ['buttons', 'Buttons'],
-                ['dropdown', 'Dropdown'],
-                ['wheel', 'Wheel'],
-              ] as const
-            ).map(([value, label]) => (
-              <label
-                key={value}
-                className={`${corners} flex flex-1 cursor-pointer items-center justify-center border px-1 py-1.5 text-sm select-none ${show === value ? 'border-primary bg-accent font-semibold' : 'hover:bg-accent/60'}`}
-              >
-                <input
-                  type="radio"
-                  name="choice-show"
-                  value={value}
-                  checked={show === value}
-                  onChange={() => setShow(value)}
-                  className="sr-only"
-                />
-                {label}
-              </label>
-            ))}
-          </div>
         </fieldset>
       </WithPreview>
     </form>

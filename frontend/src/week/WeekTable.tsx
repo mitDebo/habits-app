@@ -1,59 +1,52 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Plus, Settings } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { ArrowLeft, ArrowUp, Plus, Settings } from 'lucide-react'
 import type { WeekStart } from '@/profile/api'
-import { addDays, weekdayOf } from '@/runs/dates'
+import { addDays, daysBetween, weekdayOf } from '@/dates/dates'
+import { loadPrototype, savePrototype, type MockGoal, type PrototypeData } from '@/prototype/storage'
 import { formatDate, formatShortDate, savedDateFormat, savedShortDateFormat } from '@/settings/dateFormat'
 import { GoalDialog } from '@/week/GoalDialog'
 import type { NewGoal } from '@/week/goalKinds'
 import { DayCell } from '@/week/DayCell'
 import { frameEdges } from '@/week/frame'
 import { GoalNameCell } from '@/week/GoalNameCell'
-import { LengthHandle } from '@/week/LengthHandle'
+import { RangeButtons } from '@/week/RangeButtons'
 import { shortNumber } from '@/week/numbers'
 import { RecordDialog, type Recording } from '@/week/RecordDialog'
 import { SaveChangesDialog } from '@/week/SaveChangesDialog'
 import { SheetTabs, MAX_SHEETS } from '@/week/SheetTabs'
+import { TipBanner, type Tip } from '@/week/TipBanner'
 
-// Mockup goals until the table is wired to real plans and runs. Each has an id so ticks stay with the
-// right goal even if two goals share a name.
-type MockGoal = { id: number } & NewGoal
-// A plan ("sheet"): its own goals, ticks and removed days. All plans share the same dates, so switching
-// tabs never resizes the grid. Mockup: only kept on this page.
+// A plan's first and last days, counted from this week's first day (0 = that day, -2 = two days before).
+type Range = { first: number; last: number }
+const MAX_DAYS = 366
+
+// A plan ("sheet"): its own dates, goals, ticks and removed days. Saved in this browser (see
+// prototype/storage.ts), with real dates; here the dates are counted from this week's first day.
 type Sheet = {
   id: number
   name: string
+  range: Range
   goals: MockGoal[]
   ticked: Set<string>
   // Recorded numbers (and chosen options' emoji), by "goalId|date".
   values: Record<string, number | string>
   removedDays: Set<string>
 }
-const newSheet = (id: number, name: string, goals: MockGoal[] = []): Sheet => ({
+const newSheet = (id: number, name: string, range: Range, goals: MockGoal[] = []): Sheet => ({
   id,
   name,
+  range,
   goals,
   ticked: new Set(),
   values: {},
   removedDays: new Set(),
 })
-// "Sheet 1", "Sheet 2"…: the lowest number not already used by a plan's name.
+// "Plan 1", "Plan 2"…: the lowest number not already used by a plan's name.
 const nextSheetName = (sheets: Sheet[]) => {
   let n = 1
-  while (sheets.some((s) => s.name === `Sheet ${n}`)) n++
-  return `Sheet ${n}`
+  while (sheets.some((s) => s.name === `Plan ${n}`)) n++
+  return `Plan ${n}`
 }
-
-const startingGoals: MockGoal[] = [
-  { id: 1, name: 'Goal 1', kind: 'toggle' },
-  { id: 2, name: 'Goal 2', kind: 'toggle' },
-  { id: 3, name: 'Goal 3', kind: 'toggle' },
-]
-// A few more of "your goals" to start with, so the Your goals tab has something to offer.
-const sampleGoals: MockGoal[] = [
-  { id: 4, name: 'Read', kind: 'toggle' },
-  { id: 5, name: 'Meditate', kind: 'toggle' },
-  { id: 6, name: 'Drink water', kind: 'toggle' },
-]
 
 // Stripes (tints set per theme in index.css). Each row and each day column alternates between a
 // stronger and a lighter tint. They're see-through, so where a row crosses a column the two add up.
@@ -126,8 +119,45 @@ const ROW_PX = 44 // height of a goal row (the day buttons are h-11)
 
 const GRIP_COLUMN_PX = 20 // a grip's column: exactly the grip's width
 
+// Faint diagonal lines, for days in the calendar that aren't in the showing plan.
+const OUTSIDE_PLAN =
+  'repeating-linear-gradient(135deg, color-mix(in oklab, var(--foreground) 12%, transparent) 0 1px, transparent 1px 7px)'
+
 const weekdayName = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
+
+// Saved data → the page's plans (dates counted from this week's first day; goals looked up by id). Nothing
+// saved, or no plans: one empty plan for this week.
+function fromStorage(data: PrototypeData | null, thisWeek: string): { library: MockGoal[]; sheets: Sheet[] } {
+  const library = data?.goals ?? []
+  const sheets = (data?.sheets ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    range: { first: daysBetween(thisWeek, s.start), last: daysBetween(thisWeek, s.end) },
+    goals: s.goalIds.map((id) => library.find((g) => g.id === id)).filter((g): g is MockGoal => !!g),
+    ticked: new Set(s.ticked),
+    values: s.values,
+    removedDays: new Set(s.removedDays),
+  }))
+  return { library, sheets: sheets.length > 0 ? sheets : [newSheet(1, 'Plan 1', { first: 0, last: 6 })] }
+}
+
+// The page's plans → what's saved.
+function toStorage(library: MockGoal[], sheets: Sheet[], thisWeek: string): PrototypeData {
+  return {
+    goals: library,
+    sheets: sheets.map((s) => ({
+      id: s.id,
+      name: s.name,
+      start: addDays(thisWeek, s.range.first),
+      end: addDays(thisWeek, s.range.last),
+      goalIds: s.goals.map((g) => g.id),
+      ticked: [...s.ticked],
+      values: s.values,
+      removedDays: [...s.removedDays],
+    })),
+  }
+}
 
 // The first day of the week that contains today, using your chosen first day of the week.
 function startOfWeek(today: string, weekStart: WeekStart) {
@@ -136,12 +166,17 @@ function startOfWeek(today: string, weekStart: WeekStart) {
 }
 
 // The plan as a calendar: always 7 columns (your week, from your first day), and one block per week, each
-// with a date line and then a row per goal. Days before the plan starts or after it ends are left blank.
-// Days after today are greyed out and can't be ticked. Ticks only live on this page for now (not saved).
+// with a date line and then a row per goal. Days the calendar shows that aren't in this plan (before it
+// starts, after it ends, or in another plan) get faint diagonal lines and can't be ticked.
+// Days after today are greyed out and can't be ticked. Everything is saved in this browser for now.
 export function WeekTable({ today, weekStart }: { today: string; weekStart: WeekStart }) {
   // The plans (tabs along the bottom) and which one is showing. Everything below works on the showing one.
-  const [sheets, setSheets] = useState<Sheet[]>(() => [newSheet(1, 'Sheet 1', startingGoals)])
-  const [activeId, setActiveId] = useState(1)
+  // Everything starts from what's saved in this browser. A new user has no goals and one empty plan for
+  // this week.
+  const thisWeek = startOfWeek(today, weekStart)
+  const [saved] = useState(() => fromStorage(loadPrototype(), thisWeek))
+  const [sheets, setSheets] = useState<Sheet[]>(saved.sheets)
+  const [activeId, setActiveId] = useState(saved.sheets[0].id)
   const sheet = sheets.find((s) => s.id === activeId) ?? sheets[0]
   // Changes one part of the showing plan, like a useState setter (a new value, or a function of the old one).
   function sheetSetter<K extends 'goals' | 'ticked' | 'values' | 'removedDays'>(key: K) {
@@ -155,26 +190,53 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
       )
   }
 
-  // The plans' first and last days (shared by every plan), counted from this week's first day (0 = that
-  // day, -2 = two days before it). A week to begin with. In edit mode the two grips move them, for every
-  // plan at once. Not saved yet: a refresh goes back to this week.
-  const [range, setRange] = useState({ first: 0, last: 6 })
-  const length = range.last - range.first + 1
-  const thisWeek = startOfWeek(today, weekStart)
+  // Each plan has its own dates (`sheet.range`). The calendar covers all of them together, from the earliest
+  // first day to the latest last day, so switching tabs never reshapes it: on each tab, the days that aren't
+  // in that plan are just greyed out. In edit mode the − and + buttons at each end move the showing plan's
+  // start and end.
+  const range = sheet.range
+  const span: Range = {
+    first: Math.min(...sheets.map((s) => s.range.first)),
+    last: Math.max(...sheets.map((s) => s.range.last)),
+  }
   const dayAt = (offset: number) => addDays(thisWeek, offset)
+  // Whether a day is in the showing plan. Every other day the calendar shows (in another plan, or just
+  // filling out a week) is greyed out.
   const inPlan = (offset: number) => offset >= range.first && offset <= range.last
 
-  // The weeks the plan touches, each as its 7 day offsets.
-  const firstWeek = Math.floor(range.first / 7)
-  const lastWeek = Math.floor(range.last / 7)
+  // The weeks the calendar touches, each as its 7 day offsets.
+  const firstWeek = Math.floor(span.first / 7)
+  const lastWeek = Math.floor(span.last / 7)
   const weeks = Array.from({ length: lastWeek - firstWeek + 1 }, (_, w) =>
     Array.from({ length: 7 }, (_, i) => (firstWeek + w) * 7 + i),
   )
   const weekdays = weeks[0].map((offset) => weekdayName(dayAt(offset)))
 
-  // Each grip sets a new length; the start grip keeps the last day fixed, the end grip keeps the first.
-  const changeStart = (newLength: number) => setRange((r) => ({ ...r, first: r.last - newLength + 1 }))
-  const changeEnd = (newLength: number) => setRange((r) => ({ ...r, last: r.first + newLength - 1 }))
+  // One step of a − or + button: moves the showing plan's start or end by a day. A plan is always at least
+  // a day long, and at most MAX_DAYS.
+  const length = range.last - range.first + 1
+  const can = {
+    start: { minus: length < MAX_DAYS, plus: length > 1 },
+    end: { minus: length > 1, plus: length < MAX_DAYS },
+  }
+  const stepRange = (edge: 'start' | 'end', step: 'minus' | 'plus') => {
+    tipDone('length', 'remove')
+    setSheets((all) =>
+      all.map((s) => {
+        if (s.id !== sheet.id) return s
+        const { first, last } = s.range
+        const by = step === 'plus' ? 1 : -1
+        if (edge === 'start') {
+          const next = first + by
+          if (next > last || last - next + 1 > MAX_DAYS) return s
+          return { ...s, range: { first: next, last } }
+        }
+        const next = last + by
+        if (next < first || next - first + 1 > MAX_DAYS) return s
+        return { ...s, range: { first, last: next } }
+      }),
+    )
+  }
 
   const [dateFormat] = useState(savedDateFormat)
   const [shortDateFormat] = useState(savedShortDateFormat)
@@ -218,42 +280,59 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
       return next
     })
 
-  // Edit mode (the gear): shows the grips for changing the plan's dates, and the + for adding a goal.
-  const [editing, setEditing] = useState(false)
+  // Edit mode (the gear): shows the grips for changing the plan's dates, and the + for adding a goal. A plan
+  // with no goals yet (like a new user's) opens straight into edit mode, ready to add one.
+  const [startedEditing] = useState(() => saved.sheets[0].goals.length === 0)
+  const [editing, setEditing] = useState(startedEditing)
+  // Right after your very first goal, a short tour of edit mode, one tip at a time: changing the plan's
+  // dates, taking days off, the plan tabs, then the gear to finish. Each tip moves on when you do the thing it shows (or
+  // tap Next). See TipBanner.
+  const [tip, setTip] = useState<Tip | null>(null)
+  const tipDone = (done: Tip, next: Tip | null) => setTip((current) => (current === done ? next : current))
 
-  // The goals in this plan (mockup: only kept on this page). The + opens the Add a goal box.
+  // The goals in this plan. The + opens the Add a goal box.
   const goals = sheet.goals
   const setGoals = sheetSetter('goals')
   const [addingGoal, setAddingGoal] = useState(false)
 
   // All of "your goals": every goal you've made, whichever plans it's in (or none, after being removed).
   // A goal is the same goal in every plan it's added to; each plan keeps its own ticks for it.
-  const [library, setLibrary] = useState<MockGoal[]>(() => [...startingGoals, ...sampleGoals])
+  const [library, setLibrary] = useState<MockGoal[]>(saved.library)
+
+  // Every change is saved straight away, so a refresh (or the Goals page) sees it.
+  useEffect(() => savePrototype(toStorage(library, sheets, thisWeek)), [library, sheets, thisWeek])
   const notInThisPlan = library.filter((g) => !goals.some((inPlan) => inPlan.id === g.id))
   // Adds some of your goals to the end of this plan.
   const addExistingGoals = (ids: number[]) =>
-    setGoals((current) => [...current, ...library.filter((g) => ids.includes(g.id) && !current.some((c) => c.id === g.id))])
+    setGoals((current) => [
+      ...current,
+      ...library.filter((g) => ids.includes(g.id) && !current.some((c) => c.id === g.id)),
+    ])
   // Makes a new goal, keeps it in your goals, and adds it to the end of this plan.
   const createGoal = (newGoal: NewGoal) => {
     const goal: MockGoal = { id: Math.max(0, ...library.map((g) => g.id)) + 1, ...newGoal }
     setLibrary((all) => [...all, goal])
     setGoals((current) => [...current, goal])
+    // Your first goal ever: start the tour.
+    if (library.length === 0) setTip('length')
   }
 
   // Which goal name (in which week) or day cell has its hidden button slid out; only one at a time.
   const [revealed, setRevealed] = useState<string | null>(null)
 
-  // Goal-days taken off the plan ("goalId|date"). Blank and can't be ticked; any tick is kept, hidden,
-  // in case the day is put back.
+  // Goal-days taken off the plan ("goalId|date"). Lined like days outside the plan, and can't be ticked;
+  // any tick is kept, hidden, in case the day is put back.
   const removedDays = sheet.removedDays
   const setRemovedDays = sheetSetter('removedDays')
-  const setDayRemoved = (key: string, removed: boolean) =>
+  const setDayRemoved = (key: string, removed: boolean) => {
+    if (removed) tipDone('remove', 'tabs')
     setRemovedDays((current) => {
       const next = new Set(current)
       if (removed) next.add(key)
       else next.delete(key)
       return next
     })
+  }
 
   // Removing: the goal and its ticks go (from every week).
   const removeGoal = (id: number) => {
@@ -281,8 +360,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
   const movingGoal = drag?.id ?? null
   const SETTLE_MS = 150 // the glide into place; matches duration-150 on the rows
   // The spot the goal would land in if you let go now.
-  const landingSpot = (d: Drag) =>
-    Math.min(goals.length - 1, Math.max(0, d.from + Math.round(d.offsetPx / ROW_PX)))
+  const landingSpot = (d: Drag) => Math.min(goals.length - 1, Math.max(0, d.from + Math.round(d.offsetPx / ROW_PX)))
   const startDrag = (id: number, from: number) => {
     setDrag({ id, from, offsetPx: 0, settling: false })
     setRevealed(null)
@@ -315,17 +393,19 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
 
   // Editing is a draft. Starting edit mode remembers how everything was; pressing the gear again asks to
   // save (keep it) or discard (put it all back) — but only if something actually changed.
-  type Snapshot = { sheets: Sheet[]; range: typeof range; library: MockGoal[]; activeId: number }
-  const beforeEditing = useRef<Snapshot | null>(null)
+  type Snapshot = { sheets: Sheet[]; library: MockGoal[]; activeId: number }
+  const beforeEditing = useRef<Snapshot | null>(
+    startedEditing ? { sheets: saved.sheets, library: saved.library, activeId: saved.sheets[0].id } : null,
+  )
   const [askingToSave, setAskingToSave] = useState(false)
   // A plain description of everything edit mode can change, for spotting whether anything did.
   const describe = (snap: Omit<Snapshot, 'activeId'>) =>
     JSON.stringify({
-      range: snap.range,
       library: snap.library.map((g) => [g.id, g.name]),
       sheets: snap.sheets.map((s) => ({
         id: s.id,
         name: s.name,
+        range: s.range,
         goals: s.goals.map((g) => g.id),
         removed: [...s.removedDays].sort(),
         values: Object.entries(s.values).sort(),
@@ -333,7 +413,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
       })),
     })
   const startEditing = () => {
-    beforeEditing.current = { sheets, range, library, activeId }
+    beforeEditing.current = { sheets, library, activeId }
     setEditing(true)
   }
   const stopEditing = () => {
@@ -341,18 +421,20 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
     setDrag(null)
     setRevealed(null)
     setEditing(false)
+    setTip(null)
     beforeEditing.current = null
   }
+  // A plan that had no goals when editing started (like a new user's) just saves: there was nothing to lose.
   const finishEditing = () => {
     const before = beforeEditing.current
-    if (before && describe(before) !== describe({ sheets, range, library })) setAskingToSave(true)
+    const startedEmpty = before?.sheets.find((s) => s.id === activeId)?.goals.length === 0
+    if (before && !startedEmpty && describe(before) !== describe({ sheets, library })) setAskingToSave(true)
     else stopEditing()
   }
   const discardChanges = () => {
     const before = beforeEditing.current
     if (before) {
       setSheets(before.sheets)
-      setRange(before.range)
       setLibrary(before.library)
       setActiveId(before.sheets.some((s) => s.id === activeId) ? activeId : before.activeId)
     }
@@ -364,7 +446,12 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
   const gripsShown = editing && movingGoal === null
   const gripFade = `transition-[opacity,visibility] ease-in-out motion-reduce:transition-none ${movingGoal === null ? 'duration-500' : 'duration-200'} ${gripsShown ? 'visible opacity-100' : 'invisible opacity-0'}`
 
-  const weekPx = weekLabelPx + goals.length * ROW_PX
+  // Every week has room for as many goals as the plan with the most (at least one), so all the tabs are
+  // the same shape. A plan with fewer goals has empty slots after its goals, lined like days outside the
+  // plan; adding a goal fills the next slot.
+  const rowsPerWeek = Math.max(1, ...sheets.map((s) => s.goals.length))
+  const emptySlots = rowsPerWeek - goals.length
+  const weekPx = weekLabelPx + rowsPerWeek * ROW_PX
   // The header row is as tall as the bands' highest corner (the top of the longer, left side), and the
   // last band's top leans past the grid's right edge by this much.
   const headerPx = Math.ceil(bandSides(bandPx).left * sin)
@@ -376,23 +463,21 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
   const bandFill = [corners.bottomLeft, corners.topLeft, corners.topRight, corners.bottomRight].map(point).join(' ')
   const bandOutline = (column: number) =>
     `M ${point(column === 0 ? corners.bottomLeft : corners.neighbourTop)} L ${point(corners.topLeft)} L ${point(corners.topRight)} L ${point(corners.bottomRight)}`
-  // Rows per week: the date row, then a row per goal (or, with no goals, the one invisible filler row).
-  const bodyRows = weeks.length * (1 + Math.max(1, goals.length))
-  // Every plan shares the same weeks, so plans only differ in how many goal rows they have, and each goal
-  // row is exactly ROW_PX tall. The space under the grid makes up the rows this plan is short of the plan
-  // with the most goals, so every tab is the same height.
-  const missingRowsPx = (Math.max(...sheets.map((s) => s.goals.length)) - goals.length) * weeks.length * ROW_PX
+  // Rows per week: the date row, then a row per goal or empty slot.
+  const bodyRows = weeks.length * (1 + rowsPerWeek)
 
   const switchSheet = (id: number) => {
     setDrag(null)
     setRevealed(null)
     setActiveId(id)
   }
-  // A new, empty plan ("Sheet 2", "Sheet 3"…), shown straight away. Five at most.
+  // A new, empty plan ("Plan 2", "Plan 3"…), shown straight away. Five at most.
   const addSheet = () => {
     if (sheets.length >= MAX_SHEETS) return
+    tipDone('tabs', 'save')
     const id = Math.max(...sheets.map((s) => s.id)) + 1
-    setSheets((all) => [...all, newSheet(id, nextSheetName(all))])
+    // It starts with the same dates as the plan that's showing.
+    setSheets((all) => [...all, newSheet(id, nextSheetName(all), { ...range })])
     switchSheet(id)
   }
   // Deletes a plan (never the last one). If it was showing, the plan beside it is shown instead.
@@ -403,25 +488,30 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
     setSheets(remaining)
     if (id === sheet.id) switchSheet(remaining[Math.min(index, remaining.length - 1)].id)
   }
-  const grip = (edge: 'start' | 'end', onChange: (length: number) => void) => (
-    <LengthHandle
+  // The day the "take a day off" tip points at: the first goal's first day (still in the plan).
+  const tipDay =
+    tip === 'remove' && goals.length > 0
+      ? Array.from({ length: range.last - range.first + 1 }, (_, i) => `${goals[0].id}|${dayAt(range.first + i)}`).find(
+          (key) => !removedDays.has(key),
+        )
+      : undefined
+
+  const grip = (edge: 'start' | 'end') => (
+    <RangeButtons
       edge={edge}
-      length={length}
-      onChange={onChange}
-      stepPx={COLUMN_PX}
-      weekStepPx={weekPx}
-      // The whole grid, including any empty space that keeps it as tall as the plan with the most goals.
-      heightPx={weeks.length * weekPx + missingRowsPx}
+      onStep={(step) => stepRange(edge, step)}
+      canMinus={can[edge].minus}
+      canPlus={can[edge].plus}
+      highlight={tip === 'length'}
+      // The whole grid, empty slots included.
+      heightPx={weeks.length * weekPx}
     />
   )
 
   return (
     // Extra room on the right, exactly as much as the last band leans past the edge of its column. The end
     // grip's column sits inside that room, so having it there (even invisible) doesn't make the table wider.
-    <div
-      className="max-w-full overflow-x-auto"
-      style={{ paddingRight: Math.max(0, overhangPx - GRIP_COLUMN_PX) }}
-    >
+    <div className="max-w-full overflow-x-auto" style={{ paddingRight: Math.max(0, overhangPx - GRIP_COLUMN_PX) }}>
       <table className="border-collapse">
         <thead>
           {/* The title, centred over the day columns. It floats over its row, so it never widens the columns. */}
@@ -430,7 +520,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
             <td />
             <th colSpan={7} className="relative h-10 p-0">
               <h2 className="absolute bottom-2 left-1/2 -translate-x-1/2 text-base font-semibold whitespace-nowrap">
-                Goals for {date(dayAt(range.first))} – {date(dayAt(range.last))}
+                Habits for {date(dayAt(range.first))} – {date(dayAt(range.last))}
               </h2>
             </th>
           </tr>
@@ -439,7 +529,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                 goal-name column at its full width (the same as a goal name's, in GoalNameCell), so a plan with no
                 goals doesn't make that column shrink and the grid shift sideways when switching tabs. */}
             <th className="p-0">
-              <span className="sr-only">Goals</span>
+              <span className="sr-only">Habits</span>
               <div aria-hidden="true" className="w-20 [@media(hover:hover)]:w-32" />
             </th>
             <th aria-hidden="true" className="p-0">
@@ -489,7 +579,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                     aria-label="Edit plan"
                     aria-pressed={editing}
                     onClick={() => (editing ? finishEditing() : startEditing())}
-                    className={`rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground ${editing ? 'bg-accent text-foreground' : ''}`}
+                    className={`rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground ${editing ? 'bg-accent text-foreground' : ''} ${tip === 'save' ? 'ring-2 ring-primary' : ''}`}
                   >
                     {/* Turns 160° when editing starts and stays there; turns back when editing ends. */}
                     <Settings
@@ -498,6 +588,13 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                     />
                   </button>
                 )}
+                {/* The tour's last tip: an arrow at the gear. */}
+                {w === 0 && tip === 'save' && (
+                  <ArrowLeft
+                    aria-hidden="true"
+                    className="ml-1 inline size-4 animate-nudge-left align-middle motion-reduce:animate-none"
+                  />
+                )}
               </td>
               {/* The start grip's column. Every row has its own (empty) cell here, so each goal's stripe runs
                   right through to the grid. The grip itself sits in the first one and is laid on top of the
@@ -505,7 +602,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
               <td className="relative p-0">
                 {w === 0 && (
                   <div aria-hidden={!gripsShown} className="absolute top-0 left-0 z-10">
-                    <GripColumn fade={gripFade}>{grip('start', changeStart)}</GripColumn>
+                    <GripColumn fade={gripFade}>{grip('start')}</GripColumn>
                   </div>
                 )}
               </td>
@@ -514,37 +611,26 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                   key={offset}
                   // Days in the plan get a box around their date, in their column's colour, joining the
                   // column lines below.
-                  className={`px-0.5 py-1 text-center align-middle text-xs leading-tight whitespace-nowrap text-muted-foreground ${inPlan(offset) ? `border border-foreground/25 ${columnTint(column)}` : ''}`}
+                  className={`px-0.5 py-1 text-center align-middle text-xs leading-tight whitespace-nowrap text-muted-foreground ${inPlan(offset) ? `border border-foreground/25 ${columnTint(column)}` : 'opacity-40'}`}
                   style={{ height: weekLabelPx }}
                 >
-                  {inPlan(offset) &&
-                    shortDate(dayAt(offset)).map((part) => (
-                      <span key={part} className="block">
-                        {part}
-                      </span>
-                    ))}
+                  {shortDate(dayAt(offset)).map((part) => (
+                    <span key={part} className="block">
+                      {part}
+                    </span>
+                  ))}
                 </td>
               ))}
               {w === 0 && (
                 <td
-                  rowSpan={bodyRows + (missingRowsPx > 0 ? 1 : 0)}
+                  rowSpan={bodyRows}
                   aria-hidden={!gripsShown}
                   className={`bg-background p-0 align-middle ${gripFade}`}
                 >
-                  {grip('end', changeEnd)}
+                  {grip('end')}
                 </td>
               )}
             </tr>,
-            // A plan with no goals: an invisible, zero-height row after the date row. Without it, one week's date
-            // row would sit right on the next one's and their border lines would merge into one, making this
-            // plan a pixel or two shorter than the others.
-            ...(goals.length === 0
-              ? [
-                  <tr key={`week-${w}-empty`} aria-hidden="true" className="h-0 text-[0px] leading-[0]">
-                    <td colSpan={10} className="h-0 p-0" />
-                  </tr>,
-                ]
-              : []),
             // Then a row per goal. The row's tint sits behind the whole row; each day lays its column's tint on top.
             ...goals.map((goal, row) => (
               // While a goal is dragged, its rows float (on top, with a shadow) and the others glide out of its
@@ -582,16 +668,24 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                 <td className="p-0" style={{ boxShadow: movingGoal === goal.id ? frameEdges({}) : undefined }} />
                 {week.map((offset, column) => {
                   const day = dayAt(offset)
-                  // Outside the plan: a blank square of plain page, no lines, nothing to tap.
                   const frame = movingGoal === goal.id ? frameEdges({ right: column === 6 }) : undefined
                   // The grid's bottom edge: a line under the last goal of the last week (unless empty grid space
                   // follows, which then carries the line instead). Not under days outside the plan's dates.
                   const bottomEdge =
-                    w === weeks.length - 1 && row === goals.length - 1 && missingRowsPx === 0
+                    w === weeks.length - 1 && row === goals.length - 1 && emptySlots === 0
                       ? 'border-b border-b-foreground/25'
                       : ''
+                  // Not in this plan (another plan's day, or just filling out the week): faint diagonal lines (the same as a
+                  // removed day), and nothing to tap.
                   if (!inPlan(offset))
-                    return <td key={day} className="bg-background p-0" style={{ height: ROW_PX, boxShadow: frame }} />
+                    return (
+                      <td
+                        key={day}
+                        aria-hidden="true"
+                        className="bg-background p-0"
+                        style={{ height: ROW_PX, boxShadow: frame, backgroundImage: OUTSIDE_PLAN }}
+                      />
+                    )
                   const key = `${goal.id}|${day}`
                   const removed = removedDays.has(key)
                   return (
@@ -607,19 +701,20 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                           : goal.kind === 'choice'
                             ? String(values[key] ?? '')
                             : ticked.has(key)
-                            ? (goal.kind === 'toggle' && goal.mark) || '✓'
-                            : ''
+                              ? (goal.kind === 'toggle' && goal.mark) || '✓'
+                              : ''
                       }
                       future={day > today}
                       removed={removed}
                       widthPx={COLUMN_PX}
-                      surface={removed ? 'var(--background)' : cellSurface(row, column)}
-                      className={`${bottomEdge} ${
+                      // A removed day gets the same faint diagonal lines as days outside the plan.
+                      surface={removed ? `${OUTSIDE_PLAN}, var(--background)` : cellSurface(row, column)}
+                      className={`${bottomEdge} ${key === tipDay ? 'animate-pulse outline-2 -outline-offset-2 outline-primary' : ''} ${
                         removed
-                          ? ''
+                          ? 'bg-background'
                           : `${columnTint(column)} ${lines(column, column === 0 || !inPlan(offset - 1) || removedDays.has(`${goal.id}|${dayAt(offset - 1)}`))}`
                       }`}
-                      style={{ boxShadow: frame }}
+                      style={{ boxShadow: frame, backgroundImage: removed ? OUTSIDE_PLAN : undefined }}
                       revealed={revealed === `cell-${key}`}
                       onReveal={(shown) => setRevealed(shown ? `cell-${key}` : null)}
                       onTap={() =>
@@ -650,24 +745,22 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                 })}
               </tr>
             )),
+            // Then the empty slots (if this plan has fewer goals than the plan with the most): a blank name and
+            // lined days, exactly a goal row's height.
+            ...Array.from({ length: emptySlots }, (_, slot) => (
+              <tr key={`week-${w}-slot-${slot}`} aria-hidden="true">
+                <td className="p-0" />
+                <td className="p-0" />
+                {week.map((offset) => (
+                  <td
+                    key={offset}
+                    className="bg-background p-0"
+                    style={{ height: ROW_PX, backgroundImage: OUTSIDE_PLAN }}
+                  />
+                ))}
+              </tr>
+            )),
           ])}
-          {/* Keeps the grid as tall as the plan with the most goals, so switching tabs never changes its height
-              and the tabs below always sit in the same place. A plan with fewer goals shows the difference as
-              empty grid: its day columns carry on (stripes and lines) with nothing to tap. */}
-          {missingRowsPx > 0 && (
-            <tr aria-hidden="true">
-              <td />
-              <td />
-              {weekdays.map((name, column) => (
-                <td
-                  key={name}
-                  className={`border-b border-b-foreground/25 p-0 ${columnTint(column)} ${lines(column)}`}
-                  style={{ height: missingRowsPx }}
-                />
-              ))}
-              {/* (The end grip's column here is taken by the grip itself, which reaches down this far.) */}
-            </tr>
-          )}
           {/* Right under the grid: the + that adds a goal (under the goal names) and the plan tabs (starting
               under the first day). The + fades in and out with edit mode, like the grips. The tabs (stacked like
               cards) get exactly the width of the day columns plus the end grip, so they never widen the grid. */}
@@ -675,7 +768,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
             <td className="p-0 pl-1 align-top">
               <button
                 type="button"
-                aria-label="Add goal"
+                aria-label="Add habit"
                 aria-hidden={!editing}
                 tabIndex={editing ? 0 : -1}
                 onClick={() => setAddingGoal(true)}
@@ -683,10 +776,21 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
               >
                 <Plus aria-hidden="true" className="size-5" />
               </button>
+              {/* An empty plan in edit mode: a bouncing arrow pointing at the +, to get you started. */}
+              {editing && goals.length === 0 && !addingGoal && (
+                <p className="flex flex-col items-start gap-0.5 pl-1.5 text-xs font-medium">
+                  <ArrowUp aria-hidden="true" className="size-4 animate-bounce motion-reduce:animate-none" />
+                  {library.length === 0 ? 'Add your first habit' : 'Add a habit'}
+                </p>
+              )}
             </td>
             <td />
             <td colSpan={8} className="p-0 align-top">
-              <div style={{ width: 7 * COLUMN_PX + GRIP_COLUMN_PX }}>
+              {/* (Outlined and pulsing during the tour's tip about plans.) */}
+              <div
+                style={{ width: 7 * COLUMN_PX + GRIP_COLUMN_PX }}
+                className={tip === 'tabs' ? 'animate-pulse rounded-md ring-2 ring-primary' : ''}
+              >
                 <SheetTabs
                   sheets={sheets}
                   activeId={sheet.id}
@@ -701,6 +805,15 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
           </tr>
         </tbody>
       </table>
+      {tip && editing && (
+        <TipBanner
+          tip={tip}
+          onNext={() =>
+            setTip(tip === 'length' ? 'remove' : tip === 'remove' ? 'tabs' : tip === 'tabs' ? 'save' : null)
+          }
+          onSkip={() => setTip(null)}
+        />
+      )}
       <RecordDialog
         recording={recording}
         onSave={(value) => recording && saveValue(recording.key, value)}
@@ -716,9 +829,11 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
       <GoalDialog
         open={addingGoal}
         onClose={() => setAddingGoal(false)}
-        available={notInThisPlan}
-        onAddExisting={addExistingGoals}
+        // No Existing tab until you've made a goal; and your very first goal gets walked through.
+        available={library.length > 0 ? notInThisPlan : undefined}
+        onAddExisting={library.length > 0 ? addExistingGoals : undefined}
         onCreate={createGoal}
+        firstGoal={library.length === 0}
       />
     </div>
   )
@@ -728,10 +843,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
 // out (`fade`: the same fade the end grip uses). While hidden it can't be clicked or reached with Tab.
 function GripColumn({ fade, children }: { fade: string; children?: ReactNode }) {
   return (
-    <div
-      className={`flex justify-center ${fade}`}
-      style={{ width: GRIP_COLUMN_PX }}
-    >
+    <div className={`flex justify-center ${fade}`} style={{ width: GRIP_COLUMN_PX }}>
       {children}
     </div>
   )

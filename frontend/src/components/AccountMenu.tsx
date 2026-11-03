@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import type { User } from '@supabase/supabase-js'
 import { LoginDialog } from '@/auth/LoginDialog'
+import { endDevSession } from '@/auth/devSession'
 import { supabase } from '@/auth/supabase'
 import { useTheme, type Theme } from '@/theme/theme'
 
@@ -13,11 +14,9 @@ const initialOf = (user: User) =>
     .charAt(0)
     .toUpperCase()
 
+// Plans are made and changed right on the home page's week grid (edit mode), so the menu only needs these.
 const links = [
-  { to: '/runs', label: 'Current runs' },
-  { to: '/runs/past', label: 'Past runs' },
-  { to: '/plans', label: 'Plans' },
-  { to: '/goals', label: 'Goals' },
+  { to: '/habits', label: 'Habits' },
   { to: '/settings', label: 'Settings' },
 ]
 
@@ -132,6 +131,7 @@ export function AccountMenu({ user }: { user?: User }) {
               type="button"
               onClick={() => {
                 setOpen(false)
+                endDevSession()
                 supabase.auth.signOut()
               }}
               className="border-t px-3 py-2 text-left hover:bg-accent"
