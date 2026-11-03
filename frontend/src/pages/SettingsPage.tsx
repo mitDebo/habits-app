@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import type { Session } from '@supabase/supabase-js'
 import { Button } from '@/components/ui/button'
 import { getProfile, updateProfile, type WeekStart } from '@/profile/api'
+import { resetPrototype } from '@/prototype/storage'
 import {
   dateFormats,
   formatDate,
@@ -138,9 +139,48 @@ export function SettingsPage({ session }: { session: Session }) {
         </p>
       )}
 
+      <ResetPrototypeData />
+
       <Link to="/" className="underline">
         Back
       </Link>
     </section>
+  )
+}
+
+// Wipes the prototype's goals and plans in this browser (after a "yes"), back to how a new user starts: no
+// goals and one empty plan for this week.
+function ResetPrototypeData() {
+  const [step, setStep] = useState<'ask' | 'confirm' | 'done'>('ask')
+  return (
+    <div className="mt-4 flex flex-col items-start gap-2 border-t pt-4">
+      <h3 className="font-semibold">Prototype data</h3>
+      <p className="text-base text-muted-foreground">
+        Your habits and plans are kept in this browser for now. Resetting deletes them all here.
+      </p>
+      {step === 'ask' && (
+        <Button variant="outline" onClick={() => setStep('confirm')}>
+          Reset prototype data
+        </Button>
+      )}
+      {step === 'confirm' && (
+        <div className="flex items-center gap-2">
+          <span className="text-base">Delete all your habits and plans?</span>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              resetPrototype()
+              setStep('done')
+            }}
+          >
+            Reset
+          </Button>
+          <Button variant="outline" onClick={() => setStep('ask')}>
+            Cancel
+          </Button>
+        </div>
+      )}
+      {step === 'done' && <p className="text-base">Done. You're starting fresh.</p>}
+    </div>
   )
 }

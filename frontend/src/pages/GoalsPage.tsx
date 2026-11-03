@@ -1,53 +1,100 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
-import type { Session } from '@supabase/supabase-js'
-import { describeKind, listGoals, type Goal } from '@/goals/api'
+import { Plus, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { describeGoal, loadPrototype, savePrototype, type MockGoal, type PrototypeData } from '@/prototype/storage'
+import { GoalDialog } from '@/week/GoalDialog'
+import type { NewGoal } from '@/week/goalKinds'
 
-type State = { kind: 'loading' } | { kind: 'failed' } | { kind: 'loaded'; goals: Goal[] }
+const corners = 'rounded-[5px]'
 
-// Your goals, in the order the server keeps them (which is the order you chose).
-export function GoalsPage({ session }: { session: Session }) {
-  const [state, setState] = useState<State>({ kind: 'loading' })
+// Your goals (prototype: saved in this browser, shared with the week grid). Each shows its kind and settings
+// and which plans it's in. New goal opens the same Add a goal box as the grid (just the New tabs); a goal
+// made here isn't in any plan until you add it to one from the grid's edit mode.
+export function GoalsPage() {
+  const [data, setData] = useState<PrototypeData>(() => loadPrototype() ?? { goals: [], sheets: [] })
+  const [adding, setAdding] = useState(false)
+  // The goal whose Delete is waiting for a "yes" (null when none is).
+  const [confirming, setConfirming] = useState<number | null>(null)
 
-  useEffect(() => {
-    listGoals(session.access_token).then((goals) =>
-      setState(goals ? { kind: 'loaded', goals } : { kind: 'failed' }),
-    )
-  }, [session.access_token])
+  // Every change is saved straight away.
+  useEffect(() => savePrototype(data), [data])
+
+  const create = (newGoal: NewGoal) =>
+    setData((d) => ({ ...d, goals: [...d.goals, { id: Math.max(0, ...d.goals.map((g) => g.id)) + 1, ...newGoal }] }))
+
+  // Deleting a goal takes it out of every plan too, along with everything recorded for it.
+  const remove = (id: number) => {
+    const notThisGoal = (key: string) => !key.startsWith(`${id}|`)
+    setData((d) => ({
+      goals: d.goals.filter((g) => g.id !== id),
+      sheets: d.sheets.map((s) => ({
+        ...s,
+        goalIds: s.goalIds.filter((g) => g !== id),
+        ticked: s.ticked.filter(notThisGoal),
+        removedDays: s.removedDays.filter(notThisGoal),
+        values: Object.fromEntries(Object.entries(s.values).filter(([key]) => notThisGoal(key))),
+      })),
+    }))
+    setConfirming(null)
+  }
+
+  const plansWith = (goal: MockGoal) => data.sheets.filter((s) => s.goalIds.includes(goal.id)).map((s) => s.name)
 
   return (
-    <section className="flex flex-col items-start gap-3">
-      <h2 className="text-xl font-semibold">Your goals</h2>
-      <Link to="/goals/new" className="underline">
-        New goal
-      </Link>
+    <section className="flex max-w-xl flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold">Your habits</h2>
+        <Button className={corners} onClick={() => setAdding(true)}>
+          <Plus aria-hidden="true" className="size-4" />
+          New habit
+        </Button>
+      </div>
 
-      {state.kind === 'loading' && <p>Loading…</p>}
-      {state.kind === 'failed' && (
-        <p role="alert" className="text-destructive">
-          Couldn't load your goals.
+      {data.goals.length === 0 ? (
+        <p className="text-base text-muted-foreground">
+          No habits yet. Make one here with New habit, or from the week grid's edit mode (the gear, then +).
         </p>
-      )}
-      {state.kind === 'loaded' && state.goals.length === 0 && <p>No goals yet.</p>}
-      {state.kind === 'loaded' && state.goals.length > 0 && (
-        <ul aria-label="Your goals" className="flex w-full max-w-md flex-col gap-2">
-          {state.goals.map((goal) => (
-            <li key={goal.id} className="rounded-md border p-3">
-              <div className="flex items-baseline justify-between gap-2">
-                <h3 className="font-medium">{goal.name}</h3>
-                <Link to={`/goals/${goal.id}/edit`} aria-label={`Edit ${goal.name}`} className="text-sm underline">
-                  Edit
-                </Link>
-              </div>
-              <p className="text-sm text-muted-foreground">{describeKind(goal)}</p>
-            </li>
-          ))}
+      ) : (
+        <ul className="flex flex-col divide-y rounded-md border">
+          {data.goals.map((goal) => {
+            const plans = plansWith(goal)
+            return (
+              <li key={goal.id} className="flex items-center gap-3 px-3 py-2">
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="font-medium [overflow-wrap:anywhere]">{goal.name}</span>
+                  <span className="text-sm text-muted-foreground">{describeGoal(goal)}</span>
+                  <span className="text-xs text-muted-foreground italic">
+                    {plans.length > 0 ? `In ${plans.join(', ')}` : 'Not in any plan'}
+                  </span>
+                </div>
+                {confirming === goal.id ? (
+                  // Asks first: deleting also takes it out of its plans, with everything recorded for it.
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>{plans.length > 0 ? 'Delete it and its records?' : 'Delete?'}</span>
+                    <Button size="sm" variant="destructive" className={corners} onClick={() => remove(goal.id)}>
+                      Delete
+                    </Button>
+                    <Button size="sm" variant="outline" className={corners} onClick={() => setConfirming(null)}>
+                      Keep
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${goal.name}`}
+                    onClick={() => setConfirming(goal.id)}
+                    className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive hover:text-white"
+                  >
+                    <Trash2 aria-hidden="true" className="size-4" />
+                  </button>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
 
-      <Link to="/" className="underline">
-        Back
-      </Link>
+      <GoalDialog open={adding} onClose={() => setAdding(false)} onCreate={create} />
     </section>
   )
 }

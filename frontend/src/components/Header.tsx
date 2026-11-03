@@ -12,7 +12,7 @@ export function Header() {
       {/* Name and tagline side by side on wider screens; the tagline drops underneath on phones. */}
       <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-3">
         <h1 className="text-2xl font-bold">
-          <Link to="/">GoalTracker</Link>
+          <Link to="/">HabitTracker</Link>
         </h1>
         <p className="text-sm text-muted-foreground italic">Making progress, one day at a time</p>
       </div>

@@ -1,4 +1,4 @@
-name: goals-app
+name: habits-app
 
 x-logging: &default-logging
   driver: json-file
@@ -8,7 +8,7 @@ x-logging: &default-logging
 
 services:
   backend:
-    image: ghcr.io/mitdebo/goals-app-backend:${BACKEND_TAG:-latest}
+    image: ghcr.io/mitdebo/habits-app-backend:${BACKEND_TAG:-latest}
     restart: unless-stopped
     ports:
       - "127.0.0.1:8110:8080"
@@ -18,7 +18,7 @@ services:
     logging: *default-logging
 
   frontend:
-    image: ghcr.io/mitdebo/goals-app-frontend:${FRONTEND_TAG:-latest}
+    image: ghcr.io/mitdebo/habits-app-frontend:${FRONTEND_TAG:-latest}
     restart: unless-stopped
     ports:
       - "127.0.0.1:8111:8080"

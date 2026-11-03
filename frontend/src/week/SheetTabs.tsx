@@ -17,7 +17,7 @@ type Props = {
   onRemove: (id: number) => void
 }
 
-// A short label for a card's sliver: the first letter of each word, plus any number ("Sheet 2" → "S2",
+// A short label for a card's sliver: the first letter of each word, plus any number ("Plan 2" → "P2",
 // "Morning run" → "MR", "Gym" → "G"). At most two characters.
 const shortLabel = (name: string) =>
   name
@@ -142,7 +142,7 @@ export function SheetTabs({ sheets, activeId, editing, onSelect, onRename, onAdd
               key={sheet.id}
               ref={confirmCard}
               type="button"
-              aria-label={`Delete ${sheet.name} and all its goals and ticks`}
+              aria-label={`Delete ${sheet.name} and all its habits and ticks`}
               onClick={() => {
                 setConfirming(null)
                 onRemove(sheet.id)
