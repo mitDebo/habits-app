@@ -13,9 +13,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BACKEND_IMAGE: ghcr.io/mitdebo/goals-app-backend
-  FRONTEND_IMAGE: ghcr.io/mitdebo/goals-app-frontend
-  COMPOSE_FILE: /opt/apps/goals-app/docker-compose.yml
+  BACKEND_IMAGE: ghcr.io/mitdebo/habits-app-backend
+  FRONTEND_IMAGE: ghcr.io/mitdebo/habits-app-frontend
+  COMPOSE_FILE: /opt/apps/habits-app/docker-compose.yml
 
 jobs:
   changes:
@@ -170,10 +170,10 @@ jobs:
       - name: check the live site is healthy
         run: |
           for attempt in $(seq 1 12); do
-            status=$(curl -s -o /dev/null -w '%{http_code}' https://goals.kdubs.tech/api/health || true)
+            status=$(curl -s -o /dev/null -w '%{http_code}' https://habits.kdubs.tech/api/health || true)
             echo "attempt $attempt: $status"
             if [ "$status" = "200" ]; then exit 0; fi
             sleep 5
           done
-          echo "::error::https://goals.kdubs.tech/api/health did not return 200"
+          echo "::error::https://habits.kdubs.tech/api/health did not return 200"
           exit 1
