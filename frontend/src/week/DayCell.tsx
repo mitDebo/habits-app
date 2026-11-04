@@ -63,7 +63,7 @@ export function DayCell(props: Props) {
   const opens = removed ? 1 : -1
   const offset = swiping ? slide : revealed ? opens * widthPx : 0
   const action = removed ? props.onRestore : props.onRemove
-  const actionLabel = removed ? `Put back ${label}` : `Remove ${label} from the plan`
+  const actionLabel = removed ? `Put back ${label}` : `Remove ${label} from the schedule`
 
   const endDrag = () => {
     if (drag.current?.mode === 'swipe') {
@@ -134,7 +134,7 @@ export function DayCell(props: Props) {
       >
         {removed ? (
           // Off the plan: nothing to tick. See-through, so the cell's faint diagonal lines show.
-          <div aria-label={`${label}: not part of the plan`} role="img" className="h-11" />
+          <div aria-label={`${label}: not part of the schedule`} role="img" className="h-11" />
         ) : editing ? (
           // Edit mode: what's recorded shows but can't be changed. Days after today stay greyed out.
           <div

@@ -137,7 +137,7 @@ export function GoalNameCell(props: Props) {
           Fixed width, so every name column is the same size: names wrap onto two lines, and a long single
           word breaks wherever it has to. Wider on computers with a mouse, where there's room. */}
       <div
-        className={`relative flex h-11 w-20 items-center bg-background px-1.5 leading-tight [overflow-wrap:anywhere] [@media(hover:hover)]:w-32 [@media(hover:hover)]:pr-6 ${swiping ? '' : 'transition-transform duration-200 ease-out motion-reduce:transition-none'}`}
+        className={`relative flex h-11 w-20 items-center max-[399px]:w-16 bg-background px-1.5 leading-tight [overflow-wrap:anywhere] [@media(hover:hover)]:w-32 [@media(hover:hover)]:pr-6 ${swiping ? '' : 'transition-transform duration-200 ease-out motion-reduce:transition-none'}`}
         style={{ transform: `translateX(${offset}px)`, boxShadow: framed ? frameEdges({ left: true }) : undefined }}
       >
         <span aria-hidden="true" className={`absolute inset-0 ${tintClass}`} />

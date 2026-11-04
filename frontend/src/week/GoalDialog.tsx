@@ -29,11 +29,15 @@ type Props = {
   onCreate: (goal: NewGoal) => void
   // Your very first goal: the box walks you through it (see GoalPicker).
   firstGoal?: boolean
+  // Editing an existing habit instead of making one: its settings are filled in, and only its own kind's
+  // tab is there (a habit's kind is set when it's made and can't change). Saving calls onCreate with the
+  // new settings.
+  edit?: NewGoal
 }
 
 // A box that pops up over the page (which goes dark behind it) for adding goals to the plan. Close it
 // with Cancel, Esc, or by clicking the dark area. Like the login box, it uses the browser's own <dialog>.
-export function GoalDialog({ open, onClose, available, onAddExisting, onCreate, firstGoal }: Props) {
+export function GoalDialog({ open, onClose, available, onAddExisting, onCreate, firstGoal, edit }: Props) {
   const dialog = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -59,6 +63,7 @@ export function GoalDialog({ open, onClose, available, onAddExisting, onCreate, 
           onAddExisting={onAddExisting}
           onCreate={onCreate}
           firstGoal={firstGoal}
+          edit={edit}
         />
       )}
     </dialog>
@@ -86,13 +91,19 @@ const tabs: { id: Tab; label: string; group: string }[] = [
 //
 // Your first goal (`firstGoal`) is walked through, one nudge at a time: a welcome page with an arrow at the
 // Toggle tab; then, on the Toggle tab, a nudge to type a name; then one at the New button to save it.
-function GoalPicker({ available, onClose, onAddExisting, onCreate, firstGoal = false }: Omit<Props, 'open'>) {
+function GoalPicker({ available, onClose, onAddExisting, onCreate, firstGoal = false, edit }: Omit<Props, 'open'>) {
   // Start on "Your goals", unless there's nothing left there to add (or on the welcome page, the first time).
+  // (Editing: straight to the habit's own kind.)
   const [tab, setTab] = useState<Page>(
-    firstGoal ? 'welcome' : available && available.length > 0 ? 'existing' : 'toggle',
+    edit ? edit.kind : firstGoal ? 'welcome' : available && available.length > 0 ? 'existing' : 'toggle',
   )
-  // Without `available`, only the New tabs.
-  const shownTabs = available ? tabs : tabs.filter((t) => t.group === 'New')
+  // Without `available`, only the New tabs. Editing: only the habit's own kind, under a "Type" heading.
+  const shownTabs = edit
+    ? tabs.filter((t) => t.id === edit.kind).map((t) => ({ ...t, group: 'Type' }))
+    : available
+      ? tabs
+      : tabs.filter((t) => t.group === 'New')
+  const submitLabel = edit ? 'Save' : 'New'
 
   // When a page is shown (and when the box opens), put the cursor in its first box.
   const pages = useRef<Partial<Record<Page, HTMLDivElement | null>>>({})
@@ -107,7 +118,7 @@ function GoalPicker({ available, onClose, onAddExisting, onCreate, firstGoal = f
     <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
       {/* The banner across the top. */}
       <h2 id="goal-dialog-title" className="border-b bg-header px-5 py-3 text-xl font-semibold">
-        Add a habit
+        {edit ? 'Edit habit' : 'Add a habit'}
       </h2>
       <div className="flex min-h-0 flex-1">
         {/* Tabs down the left edge, like an address book's: a shaded column of bordered tabs, flush with
@@ -178,9 +189,31 @@ function GoalPicker({ available, onClose, onAddExisting, onCreate, firstGoal = f
               {t.id === 'existing' && available && onAddExisting && (
                 <ExistingGoals available={available} onClose={onClose} onAdd={onAddExisting} />
               )}
-              {t.id === 'toggle' && <NewToggle onClose={onClose} onCreate={onCreate} guide={firstGoal} />}
-              {t.id === 'number' && <NewNumber onClose={onClose} onCreate={onCreate} />}
-              {t.id === 'choice' && <NewChoice onClose={onClose} onCreate={onCreate} />}
+              {t.id === 'toggle' && (
+                <NewToggle
+                  onClose={onClose}
+                  onCreate={onCreate}
+                  guide={firstGoal}
+                  initial={edit?.kind === 'toggle' ? edit : undefined}
+                  submitLabel={submitLabel}
+                />
+              )}
+              {t.id === 'number' && (
+                <NewNumber
+                  onClose={onClose}
+                  onCreate={onCreate}
+                  initial={edit?.kind === 'number' ? edit : undefined}
+                  submitLabel={submitLabel}
+                />
+              )}
+              {t.id === 'choice' && (
+                <NewChoice
+                  onClose={onClose}
+                  onCreate={onCreate}
+                  initial={edit?.kind === 'choice' ? edit : undefined}
+                  submitLabel={submitLabel}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -242,7 +275,7 @@ function ExistingGoals({
     <form onSubmit={add} className="flex flex-1 flex-col">
       <WithPreview buttons={<Buttons onClose={onClose} label="Add" disabled={!picked} />}>
         {available.length === 0 ? (
-          <p className="text-sm text-muted-foreground">All your habits are already in this plan.</p>
+          <p className="text-sm text-muted-foreground">All your habits are already in this schedule.</p>
         ) : (
           <div className="flex flex-col gap-1">
             <label htmlFor="existing-goal" className="text-sm font-medium">
@@ -436,17 +469,22 @@ function Buttons({
 }
 
 // `guide`: your first goal, so it nudges you to name it and then to save it.
+// `initial`: an existing toggle habit's settings to start from (editing); `submitLabel`: "New" or "Save".
 function NewToggle({
   onClose,
   onCreate,
   guide = false,
+  initial,
+  submitLabel,
 }: {
   onClose: () => void
   onCreate: (goal: NewGoal) => void
   guide?: boolean
+  initial?: Extract<NewGoal, { kind: 'toggle' }>
+  submitLabel: string
 }) {
-  const [name, setName] = useState('')
-  const [mark, setMark] = useState<ToggleMark>('✓')
+  const [name, setName] = useState(initial?.name ?? '')
+  const [mark, setMark] = useState<ToggleMark>(initial?.mark ?? '✓')
   const [error, setError] = useState<string>()
 
   const submit = (event: FormEvent) => {
@@ -461,7 +499,7 @@ function NewToggle({
     <form onSubmit={submit} noValidate className="flex flex-1 flex-col">
       <WithPreview
         preview={<TogglePreview name={name} mark={mark} />}
-        buttons={<Buttons onClose={onClose} label="New" nudge={guide && name.trim() !== ''} />}
+        buttons={<Buttons onClose={onClose} label={submitLabel} nudge={guide && name.trim() !== ''} />}
         name={
           <NameField
             id="goal-name"
@@ -514,15 +552,28 @@ function NewToggle({
 // (On the New number and New choice pages, any change clears the error messages until New is pressed again.)
 const parse = (text: string) => (text.trim() === '' ? undefined : Number(text))
 
-function NewNumber({ onClose, onCreate }: { onClose: () => void; onCreate: (goal: NewGoal) => void }) {
-  const [name, setName] = useState('')
-  const [unit, setUnit] = useState('')
-  const [min, setMin] = useState('0')
-  const [max, setMax] = useState('')
-  const [minLabel, setMinLabel] = useState('')
-  const [maxLabel, setMaxLabel] = useState('')
-  const [step, setStep] = useState<NumberSettings['step']>(1)
-  const [show, setShow] = useState<NonNullable<NumberSettings['show']>>('entry')
+// `initial`: an existing number habit's settings to start from (editing); `submitLabel`: "New" or "Save".
+function NewNumber({
+  onClose,
+  onCreate,
+  initial,
+  submitLabel,
+}: {
+  onClose: () => void
+  onCreate: (goal: NewGoal) => void
+  initial?: Extract<NewGoal, { kind: 'number' }>
+  submitLabel: string
+}) {
+  const start = initial?.number
+  const [name, setName] = useState(initial?.name ?? '')
+  const [unit, setUnit] = useState(start?.unit ?? '')
+  // A new number habit starts with a min of 0; an existing one shows what it has (blank for none).
+  const [min, setMin] = useState(start ? (start.min === undefined ? '' : String(start.min)) : '0')
+  const [max, setMax] = useState(start?.max === undefined ? '' : String(start.max))
+  const [minLabel, setMinLabel] = useState(start?.minLabel ?? '')
+  const [maxLabel, setMaxLabel] = useState(start?.maxLabel ?? '')
+  const [step, setStep] = useState<NumberSettings['step']>(start?.step ?? 1)
+  const [show, setShow] = useState<NonNullable<NumberSettings['show']>>(start?.show ?? 'entry')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // End labels, and the slider, only make sense once both ends are set.
@@ -584,7 +635,7 @@ function NewNumber({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
   return (
     <form onSubmit={submit} onChange={() => setErrors({})} noValidate className="flex flex-1 flex-col">
       <WithPreview
-        buttons={<Buttons onClose={onClose} label="New" />}
+        buttons={<Buttons onClose={onClose} label={submitLabel} />}
         preview={
           // Restarts when the bounds, step or style change, so it starts where a new day would.
           <NumberPreview
@@ -715,14 +766,30 @@ function NewNumber({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
 
 type DraftOption = { key: number; emoji: string; name: string }
 
-function NewChoice({ onClose, onCreate }: { onClose: () => void; onCreate: (goal: NewGoal) => void }) {
-  const [name, setName] = useState('')
-  // Two empty options to start with; `key` keeps each box tied to its option as they're moved around.
-  const [options, setOptions] = useState<DraftOption[]>([
-    { key: 1, emoji: '', name: '' },
-    { key: 2, emoji: '', name: '' },
-  ])
-  const [show, setShow] = useState<NonNullable<ChoiceSettings['show']>>('buttons')
+// `initial`: an existing choice habit's settings to start from (editing); `submitLabel`: "New" or "Save".
+function NewChoice({
+  onClose,
+  onCreate,
+  initial,
+  submitLabel,
+}: {
+  onClose: () => void
+  onCreate: (goal: NewGoal) => void
+  initial?: Extract<NewGoal, { kind: 'choice' }>
+  submitLabel: string
+}) {
+  const [name, setName] = useState(initial?.name ?? '')
+  // Two empty options to start with (or the habit's own, when editing); `key` keeps each box tied to its
+  // option as they're moved around.
+  const [options, setOptions] = useState<DraftOption[]>(
+    initial
+      ? initial.choice.options.map((o, i) => ({ key: i + 1, emoji: o.emoji, name: o.name ?? '' }))
+      : [
+          { key: 1, emoji: '', name: '' },
+          { key: 2, emoji: '', name: '' },
+        ],
+  )
+  const [show, setShow] = useState<NonNullable<ChoiceSettings['show']>>(initial?.choice.show ?? 'buttons')
   const list = useRef<HTMLDivElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -773,7 +840,7 @@ function NewChoice({ onClose, onCreate }: { onClose: () => void; onCreate: (goal
   return (
     <form onSubmit={submit} noValidate className="flex flex-1 flex-col">
       <WithPreview
-        buttons={<Buttons onClose={onClose} label="New" />}
+        buttons={<Buttons onClose={onClose} label={submitLabel} />}
         preview={
           <ChoicePreview
             name={name}

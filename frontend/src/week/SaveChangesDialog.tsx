@@ -39,7 +39,7 @@ export function SaveChangesDialog({
             Save your changes?
           </h2>
           <p className="text-sm text-muted-foreground">
-            Discard puts your plans back the way they were before you started editing.
+            Discard puts your schedules back the way they were before you started editing.
           </p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" className={corners} onClick={onKeepEditing}>

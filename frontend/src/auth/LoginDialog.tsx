@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { authCallbackUrl } from '@/auth/context'
 import { devSignInAvailable, startDevSession } from '@/auth/devSession'
@@ -41,8 +41,35 @@ export function LoginDialog({ open, onClose }: { open: boolean; onClose: () => v
   )
 }
 
-// Email first (a magic link: no password), then the three "continue with" buttons.
+// The pop-up's contents: a title and close button, then the sign-in options.
 function LoginForm({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      <div className="flex items-center justify-between">
+        <h2 id="login-title" className="text-2xl font-semibold">
+          Login
+        </h2>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          className="rounded-md px-2 text-2xl leading-none text-muted-foreground hover:bg-accent"
+        >
+          ×
+        </button>
+      </div>
+      <SignInOptions onDone={onClose} autoFocus />
+    </div>
+  )
+}
+
+// The ways to sign in: email first (a magic link: no password), then the three "continue with" buttons.
+// Used in the Login pop-up and right on the About page. Signing in the first time also makes the account.
+// `onDone`: called after the dev-only "Skip sign-in" (to close the pop-up). `autoFocus`: put the cursor in
+// the email box straight away (in the pop-up, not on the About page, where it would jump the page down).
+export function SignInOptions({ onDone, autoFocus = false }: { onDone?: () => void; autoFocus?: boolean }) {
+  // Its own id, so the About page's form and the pop-up's never clash.
+  const emailId = useId()
   const [email, setEmail] = useState('')
   const [emailSent, setEmailSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,36 +95,24 @@ function LoginForm({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <h2 id="login-title" className="text-2xl font-semibold">
-          Login
-        </h2>
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={onClose}
-          className="rounded-md px-2 text-2xl leading-none text-muted-foreground hover:bg-accent"
-        >
-          ×
-        </button>
-      </div>
-
+    <div className="flex flex-col gap-4">
       <form onSubmit={sendMagicLink} className="flex flex-col gap-2">
-        <label htmlFor="login-email" className="text-sm font-medium">
+        <label htmlFor={emailId} className="text-sm font-medium">
           Email
         </label>
         {/* White in both light and dark mode, with dark text so it's always readable. */}
         <input
-          id="login-email"
+          id={emailId}
           type="email"
           required
-          autoFocus
+          autoFocus={autoFocus}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           className={`${corners} border border-gray-300 bg-white px-3 py-2 text-gray-900 [color-scheme:light]`}
         />
-        <Button type="submit" className={corners}>Email me a login link</Button>
+        <Button type="submit" className={corners}>
+          Email me a login link
+        </Button>
       </form>
 
       {emailSent && <p>Check your email for a login link.</p>}
@@ -130,7 +145,7 @@ function LoginForm({ onClose }: { onClose: () => void }) {
           className={`${corners} border border-dashed text-muted-foreground`}
           onClick={() => {
             startDevSession()
-            onClose()
+            onDone?.()
           }}
         >
           Skip sign-in (dev)

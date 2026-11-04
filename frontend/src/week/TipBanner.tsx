@@ -7,15 +7,15 @@ export type Tip = 'length' | 'remove' | 'tabs' | 'save'
 const tips: Record<Tip, { step: number; text: string }> = {
   length: {
     step: 1,
-    text: 'Nice, your first habit! Plans can be any length: the − and + buttons on each side move its start and end.',
+    text: 'Nice, your first habit! Schedules can be any length: the − and + buttons on each side move its start and end.',
   },
   remove: {
     step: 2,
-    text: 'Skipping a day? Swipe it left (or point at it and click the ×) to take it off this plan. Swipe right to put it back.',
+    text: 'Skipping a day? Swipe it left (or point at it and click the ×) to take it off this schedule. Swipe right to put it back.',
   },
   tabs: {
     step: 3,
-    text: "You can have up to 5 plans, as tabs along the bottom. Tap + to start another, and tap a plan's name to rename it.",
+    text: "You can have up to 5 schedules, as tabs along the bottom. Tap + to start another, and tap a schedule's name to rename it.",
   },
   save: {
     step: 4,

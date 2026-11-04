@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { describeGoal, loadPrototype, savePrototype, type MockGoal, type PrototypeData } from '@/prototype/storage'
 import { GoalDialog } from '@/week/GoalDialog'
@@ -13,6 +13,8 @@ const corners = 'rounded-[5px]'
 export function GoalsPage() {
   const [data, setData] = useState<PrototypeData>(() => loadPrototype() ?? { goals: [], sheets: [] })
   const [adding, setAdding] = useState(false)
+  // The habit open in the Edit habit box (null when none is).
+  const [editing, setEditing] = useState<MockGoal | null>(null)
   // The goal whose Delete is waiting for a "yes" (null when none is).
   const [confirming, setConfirming] = useState<number | null>(null)
 
@@ -21,6 +23,13 @@ export function GoalsPage() {
 
   const create = (newGoal: NewGoal) =>
     setData((d) => ({ ...d, goals: [...d.goals, { id: Math.max(0, ...d.goals.map((g) => g.id)) + 1, ...newGoal }] }))
+
+  // Saving an edit: the habit keeps its id (so its schedules and records stay with it) and its kind (the box
+  // only offers that kind); everything else is replaced by what was saved.
+  const saveEdit = (changed: NewGoal) => {
+    if (!editing || changed.kind !== editing.kind) return
+    setData((d) => ({ ...d, goals: d.goals.map((g) => (g.id === editing.id ? { ...changed, id: g.id } : g)) }))
+  }
 
   // Deleting a goal takes it out of every plan too, along with everything recorded for it.
   const remove = (id: number) => {
@@ -64,7 +73,7 @@ export function GoalsPage() {
                   <span className="font-medium [overflow-wrap:anywhere]">{goal.name}</span>
                   <span className="text-sm text-muted-foreground">{describeGoal(goal)}</span>
                   <span className="text-xs text-muted-foreground italic">
-                    {plans.length > 0 ? `In ${plans.join(', ')}` : 'Not in any plan'}
+                    {plans.length > 0 ? `In ${plans.join(', ')}` : 'Not in any schedule'}
                   </span>
                 </div>
                 {confirming === goal.id ? (
@@ -79,14 +88,24 @@ export function GoalsPage() {
                     </Button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    aria-label={`Delete ${goal.name}`}
-                    onClick={() => setConfirming(goal.id)}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive hover:text-white"
-                  >
-                    <Trash2 aria-hidden="true" className="size-4" />
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      aria-label={`Edit ${goal.name}`}
+                      onClick={() => setEditing(goal)}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <Pencil aria-hidden="true" className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Delete ${goal.name}`}
+                      onClick={() => setConfirming(goal.id)}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive hover:text-white"
+                    >
+                      <Trash2 aria-hidden="true" className="size-4" />
+                    </button>
+                  </>
                 )}
               </li>
             )
@@ -95,6 +114,14 @@ export function GoalsPage() {
       )}
 
       <GoalDialog open={adding} onClose={() => setAdding(false)} onCreate={create} />
+      {/* Keyed by the habit, so it starts fresh with that habit's settings each time. */}
+      <GoalDialog
+        key={editing?.id ?? 'none'}
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        onCreate={saveEdit}
+        edit={editing ?? undefined}
+      />
     </section>
   )
 }

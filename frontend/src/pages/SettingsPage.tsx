@@ -156,7 +156,7 @@ function ResetPrototypeData() {
     <div className="mt-4 flex flex-col items-start gap-2 border-t pt-4">
       <h3 className="font-semibold">Prototype data</h3>
       <p className="text-base text-muted-foreground">
-        Your habits and plans are kept in this browser for now. Resetting deletes them all here.
+        Your habits and schedules are kept in this browser for now. Resetting deletes them all here.
       </p>
       {step === 'ask' && (
         <Button variant="outline" onClick={() => setStep('confirm')}>
@@ -165,7 +165,7 @@ function ResetPrototypeData() {
       )}
       {step === 'confirm' && (
         <div className="flex items-center gap-2">
-          <span className="text-base">Delete all your habits and plans?</span>
+          <span className="text-base">Delete all your habits and schedules?</span>
           <Button
             variant="destructive"
             onClick={() => {
