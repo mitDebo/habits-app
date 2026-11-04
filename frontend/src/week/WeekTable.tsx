@@ -41,11 +41,11 @@ const newSheet = (id: number, name: string, range: Range, goals: MockGoal[] = []
   values: {},
   removedDays: new Set(),
 })
-// "Plan 1", "Plan 2"…: the lowest number not already used by a plan's name.
+// "Schedule 1", "Schedule 2"…: the lowest number not already used by a plan's name.
 const nextSheetName = (sheets: Sheet[]) => {
   let n = 1
-  while (sheets.some((s) => s.name === `Plan ${n}`)) n++
-  return `Plan ${n}`
+  while (sheets.some((s) => s.name === `Schedule ${n}`)) n++
+  return `Schedule ${n}`
 }
 
 // Stripes (tints set per theme in index.css). Each row and each day column alternates between a
@@ -69,7 +69,11 @@ const lines = (column: number, startsARun = column === 0) =>
 
 // The slanted headers (one per weekday). Change ANGLE and both the bands and the names tilt together.
 const ANGLE = 65 // degrees up from flat
-const COLUMN_PX = 38 // width of a day column (narrow enough for a whole week on a 412px-wide phone)
+const COLUMN_PX = 38 // width of a day column (narrow enough for a whole week on a 393px-wide phone)
+// On smaller phones (under 390px wide, like 375px iPhones and many 360px Androids) the day columns are a little slimmer, so
+// the whole week still fits without scrolling sideways.
+const NARROW_COLUMN_PX = 35
+const NARROW_SCREEN = '(max-width: 389px)'
 const TEXT_GAP_PX = 4 // space below each weekday name
 const END_GAP_PX = 6 // space between the longest name and the end of its band
 const LINE_PX = 20 // height of one line of date text
@@ -82,9 +86,9 @@ const sin = Math.sin(radians(ANGLE))
 // is cut square across the band, so the ends make a sawtooth. Only the bottom is flat, where it sits on its
 // column. Measured along the band, the middle is `middlePx` long; the left side is a little longer and the
 // right side a little shorter, which is what makes the end square.
-const bandSides = (middlePx: number) => ({
-  left: middlePx + (COLUMN_PX / 2) * cos,
-  right: middlePx - (COLUMN_PX / 2) * cos,
+const bandSides = (middlePx: number, columnPx: number) => ({
+  left: middlePx + (columnPx / 2) * cos,
+  right: middlePx - (columnPx / 2) * cos,
 })
 
 // The band's length (along its middle) for a name this many pixels long: the gap below the name, the
@@ -92,13 +96,13 @@ const bandSides = (middlePx: number) => ({
 const bandLengthFor = (textPx: number) => TEXT_GAP_PX + (LINE_PX / 2) * cos + textPx + END_GAP_PX
 
 // The band's corners, from its bottom-left corner (0, 0), with "up" being negative y.
-function bandCorners(middlePx: number) {
-  const { left, right } = bandSides(middlePx)
+function bandCorners(middlePx: number, columnPx: number) {
+  const { left, right } = bandSides(middlePx, columnPx)
   return {
     bottomLeft: [0, 0],
     topLeft: [left * cos, -left * sin],
-    topRight: [COLUMN_PX + right * cos, -right * sin],
-    bottomRight: [COLUMN_PX, 0],
+    topRight: [columnPx + right * cos, -right * sin],
+    bottomRight: [columnPx, 0],
     // Where the left neighbour's right side ends, on this band's left side.
     neighbourTop: [right * cos, -right * sin],
   }
@@ -108,11 +112,23 @@ const point = ([x, y]: number[]) => `${x.toFixed(1)},${y.toFixed(1)}`
 // The date is tilted to ANGLE around its bottom-left corner. Tilting swings the line of text a little
 // left of that corner, so the corner is pushed right by the same amount: the middle of the line then
 // starts at the middle of the column, right above the checkbox, and runs up the middle of the band.
-const dateStyle = {
-  left: COLUMN_PX / 2 + (LINE_PX / 2) * Math.sin(radians(ANGLE)),
+const dateStyle = (columnPx: number) => ({
+  left: columnPx / 2 + (LINE_PX / 2) * Math.sin(radians(ANGLE)),
   transform: `rotate(${-ANGLE}deg)`,
   transformOrigin: 'bottom left',
   lineHeight: `${LINE_PX}px`,
+})
+
+// Whether the screen is narrow (see NARROW_SCREEN), kept up to date if it changes (like turning the phone).
+function useNarrowScreen() {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_SCREEN).matches)
+  useEffect(() => {
+    const query = window.matchMedia(NARROW_SCREEN)
+    const update = () => setNarrow(query.matches)
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return narrow
 }
 
 const ROW_PX = 44 // height of a goal row (the day buttons are h-11)
@@ -139,7 +155,7 @@ function fromStorage(data: PrototypeData | null, thisWeek: string): { library: M
     values: s.values,
     removedDays: new Set(s.removedDays),
   }))
-  return { library, sheets: sheets.length > 0 ? sheets : [newSheet(1, 'Plan 1', { first: 0, last: 6 })] }
+  return { library, sheets: sheets.length > 0 ? sheets : [newSheet(1, 'Schedule 1', { first: 0, last: 6 })] }
 }
 
 // The page's plans → what's saved.
@@ -171,6 +187,9 @@ function startOfWeek(today: string, weekStart: WeekStart) {
 // Days after today are greyed out and can't be ticked. Everything is saved in this browser for now.
 export function WeekTable({ today, weekStart }: { today: string; weekStart: WeekStart }) {
   // The plans (tabs along the bottom) and which one is showing. Everything below works on the showing one.
+  // A day column's width: slimmer on small phones.
+  const columnPx = useNarrowScreen() ? NARROW_COLUMN_PX : COLUMN_PX
+
   // Everything starts from what's saved in this browser. A new user has no goals and one empty plan for
   // this week.
   const thisWeek = startOfWeek(today, weekStart)
@@ -454,9 +473,9 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
   const weekPx = weekLabelPx + rowsPerWeek * ROW_PX
   // The header row is as tall as the bands' highest corner (the top of the longer, left side), and the
   // last band's top leans past the grid's right edge by this much.
-  const headerPx = Math.ceil(bandSides(bandPx).left * sin)
-  const overhangPx = Math.ceil(bandSides(bandPx).right * cos)
-  const corners = bandCorners(bandPx)
+  const headerPx = Math.ceil(bandSides(bandPx, columnPx).left * sin)
+  const overhangPx = Math.ceil(bandSides(bandPx, columnPx).right * cos)
+  const corners = bandCorners(bandPx, columnPx)
   // Fill: the whole band. Outline: every edge except the bottom (no line between the names and the grid).
   // Neighbouring bands share a side, so after the first band, each one only draws the part of its left
   // side that rises above its neighbour, so no line is drawn twice.
@@ -471,7 +490,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
     setRevealed(null)
     setActiveId(id)
   }
-  // A new, empty plan ("Plan 2", "Plan 3"…), shown straight away. Five at most.
+  // A new, empty plan ("Schedule 2", "Schedule 3"…), shown straight away. Five at most.
   const addSheet = () => {
     if (sheets.length >= MAX_SHEETS) return
     tipDone('tabs', 'save')
@@ -509,9 +528,13 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
   )
 
   return (
+    // Centred across the page (mx-auto: equal space either side), so it sits in the middle on any phone.
     // Extra room on the right, exactly as much as the last band leans past the edge of its column. The end
     // grip's column sits inside that room, so having it there (even invisible) doesn't make the table wider.
-    <div className="max-w-full overflow-x-auto" style={{ paddingRight: Math.max(0, overhangPx - GRIP_COLUMN_PX) }}>
+    <div
+      className="mx-auto max-w-full overflow-x-auto"
+      style={{ paddingRight: Math.max(0, overhangPx - GRIP_COLUMN_PX) }}
+    >
       <table className="border-collapse">
         <thead>
           {/* The title, centred over the day columns. It floats over its row, so it never widens the columns. */}
@@ -530,7 +553,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                 goals doesn't make that column shrink and the grid shift sideways when switching tabs. */}
             <th className="p-0">
               <span className="sr-only">Habits</span>
-              <div aria-hidden="true" className="w-20 [@media(hover:hover)]:w-32" />
+              <div aria-hidden="true" className="w-20 max-[399px]:w-16 [@media(hover:hover)]:w-32" />
             </th>
             <th aria-hidden="true" className="p-0">
               <GripColumn fade={gripFade} />
@@ -540,7 +563,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                 key={name}
                 scope="col"
                 className="relative p-0 align-bottom font-normal"
-                style={{ height: headerPx, width: COLUMN_PX, minWidth: COLUMN_PX }}
+                style={{ height: headerPx, width: columnPx, minWidth: columnPx }}
               >
                 {/* A 1×1 drawing pinned to the header's bottom-left corner; the band spills out of it upward. */}
                 <svg aria-hidden="true" width="1" height="1" className="absolute bottom-0 left-0 overflow-visible">
@@ -552,7 +575,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                     nameRefs.current[column] = span
                   }}
                   className="absolute text-sm whitespace-nowrap"
-                  style={{ ...dateStyle, bottom: TEXT_GAP_PX }}
+                  style={{ ...dateStyle(columnPx), bottom: TEXT_GAP_PX }}
                 >
                   {name}
                 </span>
@@ -576,7 +599,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                 {w === 0 && (
                   <button
                     type="button"
-                    aria-label="Edit plan"
+                    aria-label="Edit schedule"
                     aria-pressed={editing}
                     onClick={() => (editing ? finishEditing() : startEditing())}
                     className={`rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground ${editing ? 'bg-accent text-foreground' : ''} ${tip === 'save' ? 'ring-2 ring-primary' : ''}`}
@@ -706,7 +729,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
                       }
                       future={day > today}
                       removed={removed}
-                      widthPx={COLUMN_PX}
+                      widthPx={columnPx}
                       // A removed day gets the same faint diagonal lines as days outside the plan.
                       surface={removed ? `${OUTSIDE_PLAN}, var(--background)` : cellSurface(row, column)}
                       className={`${bottomEdge} ${key === tipDay ? 'animate-pulse outline-2 -outline-offset-2 outline-primary' : ''} ${
@@ -788,7 +811,7 @@ export function WeekTable({ today, weekStart }: { today: string; weekStart: Week
             <td colSpan={8} className="p-0 align-top">
               {/* (Outlined and pulsing during the tour's tip about plans.) */}
               <div
-                style={{ width: 7 * COLUMN_PX + GRIP_COLUMN_PX }}
+                style={{ width: 7 * columnPx + GRIP_COLUMN_PX }}
                 className={tip === 'tabs' ? 'animate-pulse rounded-md ring-2 ring-primary' : ''}
               >
                 <SheetTabs

@@ -23,7 +23,11 @@ const links = [
 // A plain grey head-and-shoulders, for visitors who aren't signed in.
 function Silhouette() {
   return (
-    <svg viewBox="0 0 40 40" aria-hidden="true" className="size-full bg-gray-300 text-gray-500 dark:bg-slate-600 dark:text-slate-400">
+    <svg
+      viewBox="0 0 40 40"
+      aria-hidden="true"
+      className="size-full bg-gray-300 text-gray-500 dark:bg-slate-600 dark:text-slate-400"
+    >
       <circle cx="20" cy="15" r="7" fill="currentColor" />
       <path d="M6 38c0-8 6.3-13 14-13s14 5 14 13z" fill="currentColor" />
     </svg>
@@ -119,12 +123,12 @@ export function AccountMenu({ user }: { user?: User }) {
             </button>
           )}
           {user?.email && <p className="truncate px-3 py-2 text-sm text-muted-foreground">{user.email}</p>}
-          {user &&
-            links.map((link) => (
-              <Link key={link.to} to={link.to} onClick={() => setOpen(false)} className="px-3 py-2 hover:bg-accent">
-                {link.label}
-              </Link>
-            ))}
+          {/* Signed in: Habits and Settings. Everyone gets About, last. */}
+          {[...(user ? links : []), { to: '/about', label: 'About' }].map((link) => (
+            <Link key={link.to} to={link.to} onClick={() => setOpen(false)} className="px-3 py-2 hover:bg-accent">
+              {link.label}
+            </Link>
+          ))}
           <ThemePicker />
           {user && (
             <button

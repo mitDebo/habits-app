@@ -12,7 +12,7 @@ type Picker = {
 // How an option reads in a list: its emoji, then its name if it has one.
 const optionText = (option: ChoiceSettings['options'][number]) => `${option.emoji}${option.name ? ` ${option.name}` : ''}`
 
-// Buttons: one big button per option, stacked in order. Tap one to choose it.
+// Buttons: one big button per option, stacked in order, with the emoji and name centred. Tap one to choose it.
 export function ChoiceButtons({ id, options, value, onChange }: Picker) {
   return (
     <div id={id} role="radiogroup" className="flex flex-col gap-2">
@@ -23,12 +23,13 @@ export function ChoiceButtons({ id, options, value, onChange }: Picker) {
           role="radio"
           aria-checked={value === option.emoji}
           onClick={() => onChange(option.emoji)}
-          className={`flex h-12 items-center gap-3 rounded-md border px-3 text-left ${value === option.emoji ? 'border-primary bg-accent font-semibold' : 'hover:bg-accent/60'}`}
+          className={`flex h-12 items-center justify-center gap-3 rounded-md border px-3 text-center ${value === option.emoji ? 'border-primary bg-accent font-semibold' : 'hover:bg-accent/60'}`}
         >
           <span className="text-2xl" aria-hidden="true">
             {option.emoji}
           </span>
-          <span>{option.name ?? ''}</span>
+          {/* Only when there's a name, so an emoji on its own sits right in the middle. */}
+          {option.name && <span>{option.name}</span>}
           <span className="sr-only">{option.name ? '' : option.emoji}</span>
         </button>
       ))}

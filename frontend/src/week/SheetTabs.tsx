@@ -17,7 +17,7 @@ type Props = {
   onRemove: (id: number) => void
 }
 
-// A short label for a card's sliver: the first letter of each word, plus any number ("Plan 2" → "P2",
+// A short label for a card's sliver: the first letter of each word, plus any number ("Schedule 2" → "S2",
 // "Morning run" → "MR", "Gym" → "G"). At most two characters.
 const shortLabel = (name: string) =>
   name
@@ -86,7 +86,7 @@ export function SheetTabs({ sheets, activeId, editing, onSelect, onRename, onAdd
   return (
     <div
       role="tablist"
-      aria-label="Plans"
+      aria-label="Schedules"
       aria-hidden={!shown}
       className={`relative h-8 ${fade(shown)}`}
       onKeyDown={(event) => {
@@ -120,7 +120,7 @@ export function SheetTabs({ sheets, activeId, editing, onSelect, onRename, onAdd
           return (
             <input
               key={sheet.id}
-              aria-label="Plan name"
+              aria-label="Schedule name"
               autoFocus
               maxLength={MAX_NAME}
               value={renaming.name}
@@ -208,7 +208,7 @@ export function SheetTabs({ sheets, activeId, editing, onSelect, onRename, onAdd
       {/* Adds a plan, just past the stack. Only in edit mode, and only while there are fewer than five. */}
       <button
         type="button"
-        aria-label="Add plan"
+        aria-label="Add schedule"
         aria-hidden={!canAdd}
         tabIndex={canAdd ? 0 : -1}
         onClick={onAdd}

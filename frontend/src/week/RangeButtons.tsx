@@ -23,7 +23,7 @@ export function RangeButtons({ edge, heightPx, onStep, canMinus, canPlus, highli
   const minus = (
     <HoldButton
       key="minus"
-      label={edge === 'start' ? 'Start the plan a day earlier' : 'End the plan a day earlier'}
+      label={edge === 'start' ? 'Start the schedule a day earlier' : 'End the schedule a day earlier'}
       disabled={!canMinus}
       onStep={() => onStep('minus')}
       heightPx={heightPx / 2}
@@ -34,7 +34,7 @@ export function RangeButtons({ edge, heightPx, onStep, canMinus, canPlus, highli
   const plus = (
     <HoldButton
       key="plus"
-      label={edge === 'start' ? 'Start the plan a day later' : 'End the plan a day later'}
+      label={edge === 'start' ? 'Start the schedule a day later' : 'End the schedule a day later'}
       disabled={!canPlus}
       onStep={() => onStep('plus')}
       heightPx={heightPx / 2}
