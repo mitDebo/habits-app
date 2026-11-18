@@ -35,7 +35,9 @@ jobs:
   backend:
     name: backend
     needs: changes
-    if: needs.changes.outputs.backend == 'true'
+    # Paused: the old backend is removed and v1 hasn't landed yet.
+    # The v1 test-harness PR turns this back on.
+    if: false && needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

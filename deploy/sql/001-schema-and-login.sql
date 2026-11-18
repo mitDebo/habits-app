@@ -1,8 +1,0 @@
-CREATE ROLE goals_app WITH LOGIN PASSWORD 'CHANGE_ME'
-  NOSUPERUSER NOCREATEDB NOCREATEROLE;
-
-GRANT goals_app TO postgres;
-
-CREATE SCHEMA goals AUTHORIZATION goals_app;
-
-ALTER ROLE goals_app SET search_path = goals;
