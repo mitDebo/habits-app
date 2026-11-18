@@ -22,7 +22,9 @@ jobs:
     name: detect changes
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ steps.filter.outputs.backend }}
+      # Paused: the old backend is removed and v1 hasn't landed yet, so the backend
+      # is never built, migrated or restarted. The v1 test-harness PR turns this back on.
+      backend: ${{ false && steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: actions/checkout@v7
@@ -167,7 +169,9 @@ jobs:
             "$DEPLOY_USER@$DEPLOY_HOST" \
             "$COMPOSE pull $SERVICE && $COMPOSE up -d $SERVICE"
 
+      # /api/health is served by the backend, so only check it when the backend was deployed.
       - name: check the live site is healthy
+        if: needs.changes.outputs.backend == 'true'
         run: |
           for attempt in $(seq 1 12); do
             status=$(curl -s -o /dev/null -w '%{http_code}' https://habits.kdubs.tech/api/health || true)
