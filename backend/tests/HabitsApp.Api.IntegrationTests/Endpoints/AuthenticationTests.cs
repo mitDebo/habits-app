@@ -97,7 +97,7 @@ public class AuthenticationTests(HabitsApiFactory factory) : IClassFixture<Habit
     [Fact]
     public async Task Moving_the_app_clock_does_not_expire_tokens()
     {
-        factory.FakeTime.SetUtcNow(new DateTimeOffset(2040, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        factory.Clock.Set(new DateTimeOffset(2040, 1, 1, 0, 0, 0, TimeSpan.Zero));
         var token = TestJwt.Create();
 
         var response = await GetProbeAsync(token);
