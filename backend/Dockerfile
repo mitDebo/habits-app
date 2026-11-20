@@ -3,11 +3,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY src/GoalsApp.Api/GoalsApp.Api.csproj src/GoalsApp.Api/
-RUN dotnet restore src/GoalsApp.Api/GoalsApp.Api.csproj
+COPY src/HabitsApp.Api/HabitsApp.Api.csproj src/HabitsApp.Api/
+RUN dotnet restore src/HabitsApp.Api/HabitsApp.Api.csproj
 
 COPY src/ src/
-RUN dotnet publish src/GoalsApp.Api/GoalsApp.Api.csproj \
+RUN dotnet publish src/HabitsApp.Api/HabitsApp.Api.csproj \
     --configuration Release \
     --no-restore \
     --output /app/publish
@@ -21,4 +21,4 @@ EXPOSE 8080
 
 USER $APP_UID
 
-ENTRYPOINT ["dotnet", "GoalsApp.Api.dll"]
+ENTRYPOINT ["dotnet", "HabitsApp.Api.dll"]

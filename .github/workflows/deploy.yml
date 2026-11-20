@@ -22,9 +22,7 @@ jobs:
     name: detect changes
     runs-on: ubuntu-latest
     outputs:
-      # Paused: the old backend is removed and v1 hasn't landed yet, so the backend
-      # is never built, migrated or restarted. The v1 test-harness PR turns this back on.
-      backend: ${{ false && steps.filter.outputs.backend }}
+      backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: actions/checkout@v7
@@ -55,15 +53,19 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - run: dotnet restore GoalsApp.slnx
+      - run: dotnet restore HabitsApp.slnx
       - id: build
-        run: dotnet build GoalsApp.slnx --configuration Release --no-restore
-      # Tests are paused while the prototype settles (they come back with v1; see git history).
+        run: dotnet build HabitsApp.slnx --configuration Release --no-restore
+      - name: unit tests
+        run: dotnet test tests/HabitsApp.Api.UnitTests --configuration Release --no-build --logger GitHubActions
+      - name: integration tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: dotnet test tests/HabitsApp.Api.IntegrationTests --configuration Release --no-build --logger GitHubActions
 
       - name: build migrations bundle
         run: |
           dotnet tool install --global dotnet-ef --version 10.0.12
-          dotnet ef migrations bundle --project src/GoalsApp.Api --configuration Release --output efbundle --force
+          dotnet ef migrations bundle --project src/HabitsApp.Api --configuration Release --output efbundle --force
 
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
@@ -86,8 +88,8 @@ jobs:
 
       - name: apply database migrations
         env:
-          GOALS_DB_CONNECTION: ${{ secrets.GOALS_DB_CONNECTION }}
-        run: ./efbundle --connection "$GOALS_DB_CONNECTION"
+          HABITS_DB_CONNECTION: ${{ secrets.HABITS_DB_CONNECTION }}
+        run: ./efbundle --connection "$HABITS_DB_CONNECTION"
 
   frontend:
     name: frontend (test, push)
@@ -169,9 +171,7 @@ jobs:
             "$DEPLOY_USER@$DEPLOY_HOST" \
             "$COMPOSE pull $SERVICE && $COMPOSE up -d $SERVICE"
 
-      # /api/health is served by the backend, so only check it when the backend was deployed.
       - name: check the live site is healthy
-        if: needs.changes.outputs.backend == 'true'
         run: |
           for attempt in $(seq 1 12); do
             status=$(curl -s -o /dev/null -w '%{http_code}' https://habits.kdubs.tech/api/health || true)
