@@ -1,5 +1,6 @@
 using HabitsApp.Api.Data;
 using HabitsApp.Api.Data.HealthChecks;
+using HabitsApp.Api.Profiles;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -46,6 +47,8 @@ app.UseAuthorization();
 
 // The only anonymous endpoint: 200 when the database is reachable, 503 otherwise.
 app.MapHealthChecks("/api/health").AllowAnonymous();
+
+app.MapProfileEndpoints();
 
 app.Run();
 
