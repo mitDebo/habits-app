@@ -1,10 +1,10 @@
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Time.Testing;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 namespace HabitsApp.Api.IntegrationTests.Infrastructure;
@@ -13,7 +13,16 @@ namespace HabitsApp.Api.IntegrationTests.Infrastructure;
 public class HabitsApiFactory : WebApplicationFactory<Program>
 {
     // What "now" is for the app. Tests move it to whatever moment they need.
-    public FakeTimeProvider FakeTime { get; } = new(new DateTimeOffset(2026, 11, 18, 12, 0, 0, TimeSpan.Zero));
+    public TestClock Clock { get; } = new(new DateTimeOffset(2026, 11, 18, 12, 0, 0, TimeSpan.Zero));
+
+    // A client that sends a valid token for the given user on every request.
+    public HttpClient CreateClientFor(Guid userId)
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", TestJwt.Create(userId: userId));
+        return client;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -25,7 +34,7 @@ public class HabitsApiFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<TimeProvider>();
-            services.AddSingleton<TimeProvider>(FakeTime);
+            services.AddSingleton<TimeProvider>(Clock);
 
             services.AddSingleton<IStartupFilter, ProtectedProbe>();
 
