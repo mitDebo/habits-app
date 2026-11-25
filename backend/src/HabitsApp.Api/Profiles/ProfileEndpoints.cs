@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using HabitsApp.Api.Auth;
 using HabitsApp.Api.Data;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -19,6 +20,9 @@ public static class ProfileEndpoints
     public sealed record ProfileResponse(
         string TimeZone, string WeekStart, string DateFormat, string ShortDateFormat, DateOnly Today);
 
+    // Handler parameters always say where they come from: [FromBody], [FromServices], [FromRoute],
+    // [FromQuery]. ClaimsPrincipal (HttpContext.User) and CancellationToken (HttpContext.RequestAborted)
+    // are filled from the current request and take no attribute.
     public static IEndpointRouteBuilder MapProfileEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/me", EnsureProfile);
@@ -28,7 +32,11 @@ public static class ProfileEndpoints
 
     // First visit: create the profile if it's missing, then return it. 200 either way.
     private static async Task<IResult> EnsureProfile(
-        EnsureProfileRequest body, ClaimsPrincipal user, HabitsDbContext db, TimeProvider clock, CancellationToken ct)
+        [FromBody] EnsureProfileRequest body,
+        ClaimsPrincipal user,
+        [FromServices] HabitsDbContext db,
+        [FromServices] TimeProvider clock,
+        CancellationToken ct)
     {
         if (!ProfileRules.IsValidTimeZone(body.TimeZone))
             return Invalid("timeZone", "Must be an IANA time zone name, such as America/New_York.");
@@ -66,7 +74,11 @@ public static class ProfileEndpoints
 
     // Settings: change only the fields sent. Any invalid field rejects the whole request.
     private static async Task<IResult> UpdateProfile(
-        UpdateProfileRequest body, ClaimsPrincipal user, HabitsDbContext db, TimeProvider clock, CancellationToken ct)
+        [FromBody] UpdateProfileRequest body,
+        ClaimsPrincipal user,
+        [FromServices] HabitsDbContext db,
+        [FromServices] TimeProvider clock,
+        CancellationToken ct)
     {
         var profile = await db.Profiles.FindAsync([user.UserId()], ct);
         if (profile is null)
