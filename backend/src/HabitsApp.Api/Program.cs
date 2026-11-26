@@ -1,5 +1,6 @@
 using HabitsApp.Api.Data;
 using HabitsApp.Api.Data.HealthChecks;
+using HabitsApp.Api.Habits;
 using HabitsApp.Api.Profiles;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -49,6 +50,7 @@ app.UseAuthorization();
 app.MapHealthChecks("/api/health").AllowAnonymous();
 
 app.MapProfileEndpoints();
+app.MapHabitEndpoints();
 
 app.Run();
 
